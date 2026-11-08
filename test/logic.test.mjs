@@ -124,3 +124,29 @@ test('свои тренировки переживают резервную ко
   assert.deepEqual(back.templates[1].items[0], ['Отжимания', 40]);
   assert.ok(st.exercises.some((e) => e.name === 'Австралийские подтягивания'));
 });
+
+test('сводка для ИИ и запрос к DeepSeek', async () => {
+  const L = await import('../src/logic.js');
+  const A = await import('../src/ai.js');
+  const now = new Date('2026-11-08T12:00:00Z');
+  const sessions = [{ date: new Date('2026-11-01T10:00:00Z'), exercises: [{ name: 'Подтягивания', group: 'back', sets: [{ weight: 0, reps: 8 }, { weight: 0, reps: 7 }] }] }];
+  const body = [{ date: new Date('2026-11-02T08:00:00Z'), weight: 80.5, muscle: 36.1, fatPercent: 18, standard: true }];
+  const s = A.aiSummary(sessions, body, [{ title: 'Застой' }], { age: 30, heightCm: 180 }, now);
+  assert.match(s, /Подтягивания \[Спина\], тренировок 1: 01\.11\.26: 0×8, 0×7/);
+  assert.match(s, /вес 80,5 кг/);
+  assert.match(s, /возраст 30/);
+  const msgs = A.buildMessages([{ role: 'user', text: 'Что делать?' }, { role: 'assistant', text: 'Ок' }, { role: 'user', text: 'А ещё?' }], 'СВОДКА');
+  assert.equal(msgs[0].role, 'system');
+  assert.match(msgs[1].content, /^Мои данные:\nСВОДКА\n\nВопрос: Что делать\?$/);
+  assert.equal(msgs[3].content, 'А ещё?');
+  globalThis.localStorage = { m: {}, getItem(k) { return this.m[k] ?? null; }, setItem(k, v) { this.m[k] = v; }, removeItem(k) { delete this.m[k]; } };
+  await assert.rejects(A.ask([{ role: 'user', text: 'x' }], ''), /ключ/);
+  A.setKey(' sk-test ');
+  let sent;
+  const ok = await A.ask([{ role: 'user', text: 'x' }], 'S', async (url, o) => { sent = { url, o }; return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: ' Ответ ' } }] }) }; });
+  assert.equal(ok, 'Ответ');
+  assert.equal(sent.o.headers.Authorization, 'Bearer sk-test');
+  assert.equal(JSON.parse(sent.o.body).model, 'deepseek-chat');
+  await assert.rejects(A.ask([{ role: 'user', text: 'x' }], 'S', async () => ({ ok: false, status: 402, json: async () => ({}) })), /закончились деньги/);
+  void L;
+});

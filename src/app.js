@@ -8,6 +8,7 @@ import { demoState } from './demo.js';
 import { figureSVG } from './figures.js';
 import { HOME, HOME_CATALOG, homeById, homeSteps, homeMinutes, homeWorkout } from './home.js';
 import { PULLUP_CATALOG } from './extras.js';
+import * as AI from './ai.js';
 
 Object.assign(CATALOG, HOME_CATALOG, PULLUP_CATALOG);
 
@@ -1040,15 +1041,53 @@ const ADVISOR_CHECKS = [
   ['clock', 'Замеры', 'Давно не было InBody или замеры сделаны в разных условиях.'],
 ];
 
+function aiSummaryNow() {
+  const ws = state.workouts.filter((w) => w.exercises.length);
+  const prof = [...state.measurements].reverse().find((m) => m.age || m.heightCm) || {};
+  return AI.aiSummary(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), currentTips(), { age: prof.age, heightCm: prof.heightCm });
+}
+
+function chatHtml() {
+  const hasKey = !!AI.getKey();
+  const msgs = (ui.chat || []).map((m) => `<div class="bubble ${m.role}${m.error ? ' error' : ''}">${esc(m.text).replace(/\n/g, '<br>')}</div>`).join('');
+  return `<div class="section-caption">Спросить ИИ</div>
+    <section class="card chat">
+      ${hasKey ? '' : `<p class="small muted" style="margin:0">Задай вопрос своими словами, например «почему стоит жим» или «как мне сушиться». ИИ DeepSeek ответит с учётом твоих тренировок и замеров. Для этого добавь ключ DeepSeek в <a href="#settings">настройках</a>.</p>`}
+      ${msgs ? `<div class="bubbles">${msgs}${ui.chatBusy ? '<div class="bubble assistant typing"><i></i><i></i><i></i></div>' : ''}</div>` : ui.chatBusy ? '<div class="bubbles"><div class="bubble assistant typing"><i></i><i></i><i></i></div></div>' : ''}
+      ${hasKey ? `<div class="composer"><textarea id="ai-q" rows="2" placeholder="Например: почему не растёт жим лёжа?" ${ui.chatBusy ? 'disabled' : ''}></textarea>
+        <button class="send" data-act="ai-send" aria-label="Отправить" ${ui.chatBusy ? 'disabled' : ''}>${icon.back.replace('<svg', '<svg style="transform:rotate(90deg)"')}</button></div>
+        <div class="chat-foot">${ui.chat?.length ? '<button class="text-btn" data-act="ai-clear">Новый разговор</button>' : '<span></span>'}
+        <details><summary>Что увидит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}</pre></details></div>` : ''}
+    </section>`;
+}
+
+async function sendChat() {
+  const q = $('#ai-q')?.value.trim();
+  if (!q || ui.chatBusy) return;
+  ui.chat ||= [];
+  ui.chat.push({ role: 'user', text: q.slice(0, 2000) });
+  ui.chatBusy = true;
+  render();
+  try {
+    const answer = await AI.ask(ui.chat.filter((m) => !m.error), aiSummaryNow());
+    ui.chat.push({ role: 'assistant', text: answer });
+  } catch (e) {
+    ui.chat.push({ role: 'assistant', text: e.message, error: true });
+  }
+  ui.chatBusy = false;
+  if (route().name === 'advisor') { render(); scrollTo(0, document.body.scrollHeight); }
+}
+
 function viewAdvisor() {
   const tips = currentTips();
   return {
     title: 'Советник', top: topBack('#analytics', 'Советник'),
     html: `<section class="advisor-head"><span class="ic">${icon.bolt}</span><div><h2>Советник</h2><p>${tips.length ? `Есть ${tips.length} ${plural(tips.length, 'совет', 'совета', 'советов')} по твоим тренировкам и замерам.` : 'Сейчас замечаний нет. Продолжай в том же духе.'}</p></div></section>
       ${tips.length ? `<section class="card">${tips.map(tipHtml).join('')}</section>` : ''}
+      ${chatHtml()}
       <div class="section-caption">Что проверяет</div>
       <section class="card list">${ADVISOR_CHECKS.map(([ic, t, d]) => `<div class="item"><span class="thumb" style="--g:var(--indigo)">${icon[ic]}</span><span class="grow"><span class="title">${t}</span><div class="sub">${d}</div></span></div>`).join('')}</section>
-      <p class="footnote" style="margin-top:-8px">Советы считаются прямо в браузере по твоим данным и никуда не отправляются. Чем больше тренировок и замеров, тем точнее советы.</p>`,
+      <p class="footnote" style="margin-top:-8px">Советы по правилам считаются прямо в браузере и никуда не отправляются. В DeepSeek уходит только сводка из «Что увидит ИИ» и твой вопрос, и только когда ты нажимаешь «Отправить».</p>`,
   };
 }
 
@@ -1222,6 +1261,12 @@ function viewSettings() {
         ${state.settings.lastBackup ? `<p class="small muted" style="margin:0">Последняя копия: ${fmtDay(state.settings.lastBackup)}.</p>` : ''}
         <button class="btn" data-act="export">Сохранить копию</button>
         <button class="btn secondary" data-act="import-backup">Восстановить из копии</button></section>
+      <section class="card stack" id="ai-settings"><h2>ИИ-советник (DeepSeek)</h2>
+        <p class="small muted" style="margin:0">Чтобы задавать вопросы советнику, нужен свой ключ API DeepSeek. Создай его на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> и пополни баланс: один вопрос стоит меньше рубля. Ключ хранится только в этом браузере и не попадает в резервную копию.</p>
+        <div class="field"><label for="ai-key">Ключ API</label><input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" value="${esc(AI.getKey())}"></div>
+        <div class="seg">${AI.MODELS.map(([m, t]) => `<button class="${AI.getModel() === m ? 'on' : ''}" data-act="ai-model" data-m="${m}">${t.split(' ')[0]}</button>`).join('')}</div>
+        <p class="small muted" style="margin:0">«Быстрая» отвечает за секунды. «Думающая» рассуждает дольше и стоит дороже, зато точнее в сложных вопросах. Серверы DeepSeek находятся в Китае.</p>
+        <div class="grid2"><button class="btn" data-act="ai-save">Сохранить ключ</button>${AI.getKey() ? '<button class="btn danger" data-act="ai-forget">Удалить ключ</button>' : '<span></span>'}</div></section>
       <section class="card stack"><h2>Таймер отдыха</h2><div class="seg">${[60, 90, 120, 180].map((s) => `<button class="${state.settings.restSeconds === s ? 'on' : ''}" data-act="rest" data-s="${s}">${s < 120 ? `${s} с` : `${s / 60} мин`}</button>`).join('')}</div>
         <p class="small muted" style="margin:0">Запускается, когда отмечаешь подход выполненным.</p></section>
       <section class="card stack"><h2>Данные</h2>${state.demo ? '<button class="btn secondary" data-act="clear-demo">Удалить примерные данные</button>' : '<button class="btn ghost" data-act="load-demo">Показать примерные данные</button>'}
@@ -1345,6 +1390,15 @@ document.addEventListener('click', (ev) => {
     case 'rest': state.settings.restSeconds = +el.dataset.s; save(); render(); break;
     case 'play': startPlayer(el.dataset.id); break;
     case 'tpl-start': startTemplate(el.dataset.id); break;
+    case 'ai-send': sendChat(); break;
+    case 'ai-clear': ui.chat = []; render(); break;
+    case 'ai-model': AI.setModel(el.dataset.m); render(); break;
+    case 'ai-save': {
+      const v = $('#ai-key').value.trim();
+      if (v && !/^sk-[\w-]{10,}$/.test(v)) { toast('Ключ DeepSeek начинается с sk-'); break; }
+      AI.setKey(v); render(); toast(v ? 'Ключ сохранён' : 'Ключ удалён'); break;
+    }
+    case 'ai-forget': AI.setKey(''); render(); toast('Ключ удалён'); break;
     case 'b-sec': case 'b-sets': case 'b-rounds': case 'b-rest': case 'b-rrest': case 'b-del': case 'b-up': case 'b-add': case 'b-save': case 'b-delete':
       builderAct(act, el); break;
     default: break;
