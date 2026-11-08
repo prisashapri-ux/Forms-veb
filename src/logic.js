@@ -141,7 +141,8 @@ export function stepFor(name, group) {
 
 export function repRange(top) {
   if (top <= 6) return [3, 6];
-  if (top >= 13) return [12, 20];
+  // 12 повторов после прибавки читались бы как «верх 8–12» и давали двойную прибавку.
+  if (top >= 13) return [13, 20];
   return [8, 12];
 }
 

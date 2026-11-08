@@ -248,9 +248,9 @@ export function normStatus(text) {
 
 // Границы правдоподобия: отбрасываем явный мусор разбора (как InBodyParser.plausible в iOS-версии).
 const PLAUSIBLE = {
-  weight: [20, 300], muscleMass: [5, 120], fatPercent: [1, 75], fatMass: [0.5, 200], water: [5, 120],
-  protein: [1, 40], bone: [0.5, 10], visceralFat: [1, 30], bmi: [8, 80], fatFreeMass: [10, 200],
-  bmr: [500, 5000], score: [1, 120],
+  weight: [20, 350], muscleMass: [5, 150], fatPercent: [1, 75], fatMass: [0.5, 250], water: [5, 150],
+  protein: [1, 50], bone: [0.5, 15], visceralFat: [0, 60], bmi: [8, 80], fatFreeMass: [10, 250],
+  bmr: [500, 5000], score: [0, 100],
 };
 
 export function plausible(metric, v) {
@@ -259,11 +259,15 @@ export function plausible(metric, v) {
 }
 
 function sanitize(report) {
-  for (const m of Object.keys(report.values)) if (!plausible(m, report.values[m])) delete report.values[m];
+  for (const m of Object.keys(report.values)) if (!plausible(m, report.values[m])) { delete report.values[m]; delete report.ranges[m]; }
+  for (const m of Object.keys(report.ranges)) if (!(report.ranges[m].min <= report.ranges[m].max)) delete report.ranges[m];
+  if (report.dailyCalories != null && !(report.dailyCalories >= 500 && report.dailyCalories <= 10000)) report.dailyCalories = null;
+  if (report.idealWeight != null && !(report.idealWeight >= 20 && report.idealWeight <= 350)) report.idealWeight = null;
+  if (report.age != null && !(report.age >= 5 && report.age <= 120)) report.age = null;
   for (const h of report.history) {
     for (const k of ['weight', 'muscleMass', 'fatPercent']) if (!plausible(k, h[k])) h[k] = null;
   }
-  report.history = report.history.filter((h) => h.weight != null || h.muscleMass != null || h.fatPercent != null);
+  report.history = report.history.filter((h) => h.date <= report.date && (h.weight != null || h.muscleMass != null || h.fatPercent != null));
   return report;
 }
 
