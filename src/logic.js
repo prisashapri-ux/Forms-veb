@@ -1,6 +1,7 @@
 // Логика «Формы» без интерфейса: форматирование, прогрессия, программы, тренд, советник,
 // питание и резервная копия. Порт моделей из Forma/Models/*.swift.
 import { HOME_EXERCISES } from './home.js';
+import { PULLUP_EXERCISES } from './extras.js';
 
 // ───────── Справочники ─────────
 
@@ -44,6 +45,7 @@ export const DEFAULT_EXERCISES = [
   ['Французский жим', 'triceps'], ['Разгибание рук на блоке', 'triceps'], ['Жим узким хватом', 'triceps'],
   ['Скручивания', 'core'], ['Планка', 'core'], ['Подъём ног в висе', 'core'],
   ['Беговая дорожка', 'cardio'], ['Велотренажёр', 'cardio'], ['Эллипс', 'cardio'],
+  ...PULLUP_EXERCISES,
   ...HOME_EXERCISES,
 ];
 
@@ -433,6 +435,7 @@ export function emptyState() {
     exercises: DEFAULT_EXERCISES.map(([name, group]) => ({ name, group, isCustom: false, note: '' })),
     workouts: [],
     food: [],
+    templates: [],
     settings: { activeProgram: null, nutritionGoal: null, restSeconds: 120 },
   };
 }
@@ -464,7 +467,26 @@ export function makeBackup(state) {
         sets: e.sets.map((s, j) => ({ order: j, weight: s.weight, reps: s.reps, isWarmup: !!s.isWarmup, isDone: !!s.isDone })) })),
     })),
     food: [...state.food].sort((a, b) => (a.date < b.date ? -1 : 1)).map((f) => ({ date: iso(f.date), title: f.title, protein: f.protein, kcal: f.kcal })),
+    // Свои тренировки из конструктора. iOS-приложение незнакомые поля пропускает.
+    ...(state.templates?.length ? { templates: state.templates.map(cleanTemplate).filter(Boolean) } : {}),
   };
+}
+
+/** Проверяет и нормализует свою тренировку из конструктора. */
+export function cleanTemplate(t) {
+  if (!t || typeof t !== 'object' || !Array.isArray(t.items)) return null;
+  const int = (v, lo, hi, d) => (Number.isInteger(v) && v >= lo && v <= hi ? v : d);
+  const title = String(t.title || '').trim().slice(0, 60) || 'Моя тренировка';
+  const id = typeof t.id === 'string' && /^[\w-]{1,40}$/.test(t.id) ? t.id : uid();
+  if (t.kind === 'home') {
+    const items = t.items.filter((x) => Array.isArray(x) && typeof x[0] === 'string' && x[0]).slice(0, 30).map(([ex, sec]) => [ex.slice(0, 80), int(sec, 5, 600, 40)]);
+    return { id, kind: 'home', title, rounds: int(t.rounds, 1, 10, 3), rest: int(t.rest, 0, 300, 20), roundRest: int(t.roundRest, 0, 600, 60), items };
+  }
+  const items = t.items.filter((x) => x && typeof x.exercise === 'string' && x.exercise).slice(0, 30).map((x) => {
+    const lo = int(x.reps?.[0], 1, 100, 8), hi = int(x.reps?.[1], 1, 100, 12);
+    return { exercise: x.exercise.slice(0, 80), sets: int(x.sets, 1, 10, 3), reps: [Math.min(lo, hi), Math.max(lo, hi)] };
+  });
+  return { id, kind: 'gym', title, items };
 }
 
 function clean(o) {
@@ -527,6 +549,7 @@ export function readBackup(json) {
     if (Number.isNaN(+d) || !finite(x.protein, 0, 1000) || !finite(x.kcal, 0, 20000)) continue;
     state.food.push({ id: uid(), date: d.toISOString(), title: String(x.title || 'Еда'), protein: x.protein, kcal: x.kcal });
   }
+  state.templates = Array.isArray(f.templates) ? f.templates.map(cleanTemplate).filter(Boolean) : [];
   return state;
 }
 

@@ -109,3 +109,18 @@ test('программа подставляет веса с прибавкой',
   assert.deepEqual(w.exercises[1].sets.map((s) => s.reps), [8, 8, 8]);
   assert.equal(L.nextDay(p, [w]), 1);
 });
+
+test('свои тренировки переживают резервную копию и чистятся', async () => {
+  const L = await import('../src/logic.js');
+  const st = L.emptyState();
+  st.templates = [
+    { id: 'a1', kind: 'gym', title: 'Спина', items: [{ exercise: 'Подтягивания широким хватом', sets: 4, reps: [12, 6] }] },
+    { id: 'b2', kind: 'home', title: 'Дом', rounds: 99, rest: 15, roundRest: 45, items: [['Отжимания', 3], ['Планка', 45]] },
+  ];
+  const back = L.readBackup(JSON.stringify(L.makeBackup(st)));
+  assert.equal(back.templates.length, 2);
+  assert.deepEqual(back.templates[0].items[0].reps, [6, 12]);
+  assert.equal(back.templates[1].rounds, 3);
+  assert.deepEqual(back.templates[1].items[0], ['Отжимания', 40]);
+  assert.ok(st.exercises.some((e) => e.name === 'Австралийские подтягивания'));
+});

@@ -443,3 +443,36 @@ main.view {
 
 .list.thumbs .item .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list.thumbs .item .grow { overflow: hidden; }
+
+/* Конструктор */
+.stepper { display: inline-flex; align-items: center; background: var(--fill); border-radius: 9px; overflow: hidden; flex: none; }
+.stepper button { border: 0; background: none; width: 40px; height: 34px; font-size: 22px; line-height: 1; color: var(--accent); padding: 0; }
+.stepper b { min-width: 52px; text-align: center; font: 600 17px var(--font-rounded); }
+.b-list { display: flex; flex-direction: column; padding-top: 4px; padding-bottom: 4px; }
+.b-item { padding: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.b-item + .b-item { border-top: 0.5px solid var(--line); }
+.b-item .row b { font-weight: 600; overflow-wrap: anywhere; }
+.b-ctl { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-left: 58px; }
+.reps-in { display: inline-flex; align-items: center; gap: 6px; }
+.reps-in input { width: 52px; height: 34px; border: 0; border-radius: 9px; background: var(--fill); text-align: center; font: 600 17px var(--font-rounded); }
+.reps-in input:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.list .item .item-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; color: inherit; }
+.list .item .item-main .grow { flex: 1; min-width: 0; }
+.list .item > .text-btn { flex: none; font-size: 15px; }
+.home-card.add { background: var(--card); color: var(--accent); border: 2px dashed color-mix(in srgb, var(--pink) 40%, transparent); min-height: 150px; justify-content: center; align-items: flex-start; gap: 4px; }
+.home-card.add .ttl { color: var(--fg); }
+.home-card.add .meta { color: var(--muted); opacity: 1; }
+.home-card.add .plus { width: 40px; height: 40px; border-radius: 50%; background: var(--pink); color: #fff; display: grid; place-items: center; margin-bottom: 6px; }
+.home-card.add .plus svg { width: 24px; height: 24px; }
+
+/* Советник */
+.advisor-card { display: flex; flex-direction: column; gap: 4px; color: inherit; text-decoration: none; }
+.advisor-card .cat svg { stroke-width: 2.2; }
+.advisor-card .when .chev { width: 13px; height: 13px; vertical-align: -1px; margin-left: 4px; }
+.advisor-card b { font-weight: 600; margin-top: 4px; }
+.advisor-card p { margin: 0; font-size: 15px; color: var(--muted); letter-spacing: -0.24px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.advisor-head { border-radius: 16px; padding: 18px 16px; color: #fff; background: linear-gradient(160deg, #7d7aff, #5856d6); display: flex; gap: 14px; align-items: center; }
+.advisor-head .ic { width: 52px; height: 52px; border-radius: 14px; background: rgba(255, 255, 255, 0.22); display: grid; place-items: center; flex: none; }
+.advisor-head .ic svg { width: 30px; height: 30px; }
+.advisor-head h2 { margin: 0; font: 700 26px/31px var(--font-display); }
+.advisor-head p { margin: 2px 0 0; font-size: 15px; opacity: 0.92; }

@@ -7,8 +7,9 @@ import { parsePdf, InBodyError } from './parser.js';
 import { demoState } from './demo.js';
 import { figureSVG } from './figures.js';
 import { HOME, HOME_CATALOG, homeById, homeSteps, homeMinutes, homeWorkout } from './home.js';
+import { PULLUP_CATALOG } from './extras.js';
 
-Object.assign(CATALOG, HOME_CATALOG);
+Object.assign(CATALOG, HOME_CATALOG, PULLUP_CATALOG);
 
 const { num, signed, metricValue, tonnage, plural, fmtDay, dayKey, toDate, METRIC_INFO } = L;
 
@@ -75,6 +76,24 @@ function thumb(name, { animate = false, size = '' } = {}) {
   const g = groupOf(name);
   return `<span class="thumb ${size}" style="--g:${GROUP_COLOR[g] || 'var(--accent)'}">${figureSVG(name, g, { animate, frame: animate ? null : 1 })}</span>`;
 }
+/** Диапазон повторов: из программы или из своей тренировки конструктора. */
+function rangeFor(w, name) {
+  const r = L.programRange(w, name);
+  if (r || typeof w.programID !== 'string' || !w.programID.startsWith('tpl:')) return r;
+  const t = (state.templates || []).find((x) => x.id === w.programID.slice(4));
+  return t?.items.find((i) => i.exercise === name)?.reps || null;
+}
+const CUSTOM_COLORS = [['#8e8e93', '#636366'], ['#ff6482', '#ff2d55'], ['#ffb340', '#ff9500'], ['#5ac8fa', '#007aff'], ['#d17cff', '#af52de'], ['#4cd964', '#28a745']];
+/** Комплекс для дома: готовый или свой. */
+function planById(id) {
+  const h = homeById(id);
+  if (h) return h;
+  const i = (state.templates || []).findIndex((t) => t.kind === 'home' && t.id === id);
+  if (i < 0) return null;
+  const t = state.templates[i];
+  const [c1, c2] = CUSTOM_COLORS[(i % (CUSTOM_COLORS.length - 1)) + 1];
+  return { ...t, custom: true, level: '', equipment: 'Своя тренировка', summary: '', c1, c2 };
+}
 const isHomeWorkout = (w) => typeof w.programID === 'string' && w.programID.startsWith('home:');
 
 function toast(text) {
@@ -125,15 +144,16 @@ const go = (hash) => { location.hash = hash; };
 addEventListener('hashchange', () => { closeSheet(); render(true); });
 
 const TABS = [['body', 'Тело', icon.body, 'var(--purple)'], ['diary', 'Дневник', icon.diary, 'var(--orange)'], ['home', 'Дома', icon.home, 'var(--pink)'], ['analytics', 'Аналитика', icon.chart, 'var(--blue)'], ['food', 'Питание', icon.food, 'var(--green)']];
-const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
+const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', build: 'diary', advisor: 'analytics', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
 const TAB_TITLE = { body: 'Тело', diary: 'Дневник', home: 'Дома', analytics: 'Аналитика', food: 'Питание' };
 
 function render(scrollTop = false) {
   const r = route();
-  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
+  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, advisor: viewAdvisor, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
   const v = (views[r.name] || viewBody)(r.arg);
   const y = scrollY;
   const tab = TAB_OF[r.name] || 'body';
+  if (r.name !== 'build') ui.draft = null;
   document.body.dataset.tab = tab;
   $('#app').innerHTML = `<header class="top ${v.top.includes('data-nav') ? 'nav' : ''}">${v.top}</header><main class="view" id="view">${v.html}</main>`;
   $('#tabs').innerHTML = TABS.map(([id, t, ic, c]) => `<a href="#${id}" style="--tabc:${c}" class="${tab === id ? 'on' : ''}" ${tab === id ? 'aria-current="page"' : ''}>${ic}<span>${t}</span></a>`).join('');
@@ -462,6 +482,11 @@ function viewDiary() {
       <div class="small muted">«Форма» будет предлагать следующий день и сама прибавлять веса.</div></div>${figureSVG('Жим штанги лёжа', 'chest')}
       <button class="btn block" data-act="go" data-to="programs">Выбрать программу</button></section>`;
   }
+  const mine = (state.templates || []).filter((t) => t.kind === 'gym');
+  const mineHtml = `<div class="section-title">Мои тренировки</div><section class="card list thumbs">
+    ${mine.map((t) => `<div class="item"><button class="item-main" data-act="tpl-start" data-id="${t.id}">${t.items[0] ? thumb(t.items[0].exercise) : `<span class="thumb">${icon.dumbbell}</span>`}<span class="grow"><span class="title"><b>${esc(t.title)}</b></span><div class="sub">${t.items.map((x) => esc(x.exercise)).join(', ')}</div></span></button>
+      <a class="text-btn" href="#build-gym-${t.id}">Изменить</a></div>`).join('')}
+    <a class="item" href="#build-gym"><span class="thumb" style="--g:var(--orange)">${icon.plus}</span><span class="grow"><span class="title">Собрать свою тренировку</span><div class="sub">Свои упражнения, подходы и повторы</div></span>${icon.chev}</a></section>`;
   const actions = `<section class="card list">
     <button class="item" data-act="new-workout"><span class="thumb" style="--g:var(--orange)">${icon.plus}</span><span class="grow title">Пустая тренировка</span>${icon.chev}</button>
     ${ws[0] ? `<button class="item" data-act="repeat-last"><span class="thumb" style="--g:var(--blue)">${icon.repeat}</span><span class="grow"><span class="title">Повторить последнюю</span><div class="sub">${esc(ws[0].title)}</div></span>${icon.chev}</button>` : ''}
@@ -482,7 +507,7 @@ function viewDiary() {
     }
     flushGroup();
   }
-  return { title: 'Дневник', top: topTitle('Дневник', right), html: `${demoBanner()}<div class="section-title" style="margin-top:0">Эта неделя</div>${weekRings()}${next}${actions}${list}` };
+  return { title: 'Дневник', top: topTitle('Дневник', right), html: `${demoBanner()}<div class="section-title" style="margin-top:0">Эта неделя</div>${weekRings()}${advisorCard()}${next}${actions}${mineHtml}${list}` };
 }
 
 function newWorkout(fromProgram = null, dayIndex = 0) {
@@ -506,7 +531,7 @@ function viewWorkout(id) {
   const blocks = w.exercises.map((e, ei) => {
     const g = groupOf(e.name);
     const prev = L.previousEntry(state.workouts, e.name, w.date, w.id);
-    const range = L.programRange(w, e.name);
+    const range = rangeFor(w, e.name);
     const sug = prev ? L.suggest(prev.e.sets, e.name, g, range) : null;
     const prevText = prev ? `Прошлый раз ${fmtDay(prev.w.date, false)}: ${L.workingSets(prev.e).map((s) => `${num(s.weight, 2)}×${s.reps}`).join(', ')}` : 'Первый раз в дневнике';
     const isCardio = g === 'cardio' && !isHomeWorkout(w);
@@ -710,29 +735,32 @@ function viewHome() {
         <div><div class="l" style="color:var(--green)">Минуты</div><div class="v">${mins}<small> / 60</small></div></div></div></section>
       <div class="section-title">Готовые тренировки</div>
       <div class="home-grid">${card(HOME[0], true)}${HOME.slice(1).map((h) => card(h)).join('')}</div>
+      <div class="section-title">Мои тренировки</div>
+      <div class="home-grid">${(state.templates || []).filter((t) => t.kind === 'home').map((t) => planById(t.id)).filter((h) => h.items.length).map((h) => card(h)).join('')}
+        <a class="home-card add" href="#build-home"><span class="plus">${icon.plus}</span><span class="ttl">Собрать свою</span><span class="meta">упражнения, время и круги</span></a></div>
       <p class="footnote" style="margin-top:-8px">Таймер ведёт по упражнениям сам: показывает, что делать, считает время и отдых, пищит перед сменой. После тренировки она попадёт в дневник.</p>
       ${recent.length ? `<div class="section-title">Недавние</div><section class="card list thumbs">${recent.map(workoutRow).join('')}</section>` : ''}`,
   };
 }
 
 function viewPlan(id) {
-  const h = homeById(id);
+  const h = planById(id);
   if (!h) return { title: 'Дома', top: topBack('#home', 'Тренировка'), html: '<section class="card empty"><h2>Тренировка не найдена</h2><a class="btn" href="#home">Ко всем</a></section>' };
   const n = h.items.length;
   const list = h.items.map(([ex, sec]) => `<button class="item" data-act="exercise-info" data-name="${esc(ex)}">${thumb(ex, { animate: true })}
     <span class="grow"><span class="title">${esc(ex)}</span><div class="sub">${esc(CATALOG[ex]?.muscles || L.GROUPS[groupOf(ex)])}</div></span><span class="value">${sec} с</span>${icon.chev}</button>`).join('');
   return {
-    title: h.title, top: topBack('#home', h.title),
+    title: h.title, top: topBack('#home', h.title, h.custom ? `<a class="text-btn" href="#build-home-${h.id}">Изменить</a>` : ''),
     html: `<section class="plan-head" style="--c1:${h.c1};--c2:${h.c2}">
         <h2>${esc(h.title)}</h2>
         <div class="facts"><span>${icon.clock} ${homeMinutes(h)} мин</span><span>${h.rounds} ${plural(h.rounds, 'круг', 'круга', 'кругов')}</span><span>${n} ${plural(n, 'упражнение', 'упражнения', 'упражнений')}</span></div>
-        <p>${esc(h.level)} · ${esc(h.equipment)}</p>
-        ${figureSVG(h.items[0][0], groupOf(h.items[0][0]))}
+        <p>${esc([h.level, h.equipment].filter(Boolean).join(' · '))}</p>
+        ${h.items[0] ? figureSVG(h.items[0][0], groupOf(h.items[0][0])) : ''}
       </section>
-      <p class="footnote" style="margin-top:-8px">${esc(h.summary)}</p>
+      ${h.summary ? `<p class="footnote" style="margin-top:-8px">${esc(h.summary)}</p>` : ''}
       <div class="section-caption">Один круг · отдых ${h.rest} с${h.rounds > 1 ? `, между кругами ${h.roundRest} с` : ''}</div>
       <section class="card list thumbs">${list}</section>
-      <button class="btn block" style="background:var(--pink)" data-act="play" data-id="${h.id}">${icon.play} Начать</button>`,
+      ${h.items.length ? `<button class="btn block" style="background:var(--pink)" data-act="play" data-id="${h.id}">${icon.play} Начать</button>` : '<p class="footnote">Добавь упражнения, чтобы начать.</p>'}`,
   };
 }
 
@@ -754,8 +782,8 @@ function tone(freq = 880, len = 0.15) {
 }
 
 function startPlayer(id) {
-  const plan = homeById(id);
-  if (!plan) return;
+  const plan = planById(id);
+  if (!plan || !plan.items.length) return;
   try { audioCtx ||= new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume?.(); } catch { /* без звука */ }
   Object.assign(player, { plan, steps: homeSteps(plan), i: 0, paused: false, startedAt: Date.now(), lastBeep: null, drawnStep: -1 });
   player.el = document.createElement('div');
@@ -888,6 +916,142 @@ function finishPlayer(completed) {
     <div class="controls" style="grid-template-columns:1fr"><button class="main" data-p="done" style="background:var(--pink)">Закрыть</button></div>`;
 }
 
+// ───────── Конструктор своих тренировок ─────────
+const stepper = (val, act, extra, label) => `<span class="stepper" role="group" aria-label="${esc(label)}"><button data-act="${act}" data-d="-1" ${extra} aria-label="Меньше">−</button><b class="tabular">${val}</b><button data-act="${act}" data-d="1" ${extra} aria-label="Больше">+</button></span>`;
+
+function viewBuild(arg) {
+  const [kind = 'gym', ...rest] = (arg || 'gym').split('-');
+  const id = rest.join('-');
+  const back = kind === 'home' ? (id ? `#plan-${id}` : '#home') : '#diary';
+  if (!ui.draft || ui.draft.key !== arg) {
+    const existing = id ? (state.templates || []).find((t) => t.id === id) : null;
+    ui.draft = { key: arg, isNew: !existing, t: existing ? JSON.parse(JSON.stringify(existing)) : (kind === 'home'
+      ? { id: L.uid(), kind: 'home', title: '', rounds: 3, rest: 20, roundRest: 60, items: [] }
+      : { id: L.uid(), kind: 'gym', title: '', items: [] }) };
+  }
+  const t = ui.draft.t;
+  const home = t.kind === 'home';
+  const rows = t.items.map((it, i) => {
+    const name = home ? it[0] : it.exercise;
+    const ctl = home
+      ? `<div class="b-ctl"><span class="muted small">Работа</span>${stepper(`${it[1]} с`, 'b-sec', `data-i="${i}"`, 'Секунды')}</div>`
+      : `<div class="b-ctl"><span class="muted small">Подходы</span>${stepper(it.sets, 'b-sets', `data-i="${i}"`, 'Подходы')}</div>
+         <div class="b-ctl"><span class="muted small">Повторы</span><span class="reps-in"><input inputmode="numeric" data-b="lo" data-i="${i}" value="${it.reps[0]}" aria-label="Повторов от"><span>–</span><input inputmode="numeric" data-b="hi" data-i="${i}" value="${it.reps[1]}" aria-label="Повторов до"></span></div>`;
+    return `<div class="b-item">
+      <div class="row">${thumb(name)}<span class="grow"><b>${esc(name)}</b><div class="small muted">${L.GROUPS[groupOf(name)]}</div></span>
+        ${i > 0 ? `<button class="x-btn" data-act="b-up" data-i="${i}" aria-label="Поднять выше">${icon.back.replace('<svg', '<svg style="transform:rotate(90deg)"')}</button>` : ''}
+        <button class="x-btn" data-act="b-del" data-i="${i}" aria-label="Убрать">${icon.x}</button></div>${ctl}</div>`;
+  }).join('');
+  const seg = (act, cur, opts) => `<div class="seg">${opts.map((v) => `<button class="${cur === v ? 'on' : ''}" data-act="${act}" data-v="${v}">${v ? `${v} с` : 'нет'}</button>`).join('')}</div>`;
+  const settings = home ? `<section class="card stack">
+      <div class="row"><span class="grow">Круги</span>${stepper(t.rounds, 'b-rounds', '', 'Круги')}</div>
+      <div><div class="small muted" style="margin-bottom:6px">Отдых между упражнениями</div>${seg('b-rest', t.rest, [0, 10, 15, 20, 30])}</div>
+      <div><div class="small muted" style="margin-bottom:6px">Отдых между кругами</div>${seg('b-rrest', t.roundRest, [0, 30, 45, 60, 90])}</div>
+      ${t.items.length ? `<div class="small muted">Всего ≈ ${homeMinutes(t)} мин</div>` : ''}</section>` : '';
+  return {
+    title: 'Конструктор',
+    top: topBack(back, ui.draft.isNew ? 'Новая тренировка' : 'Изменить', '<button class="text-btn strong" data-act="b-save">Сохранить</button>'),
+    html: `<section class="card"><div class="field"><label for="b-title">Название</label><input id="b-title" data-b="title" value="${esc(t.title)}" placeholder="${home ? 'Например, Вечерняя дома' : 'Например, Спина и бицепс'}"></div></section>
+      ${settings}
+      <div class="section-caption">Упражнения${t.items.length ? ` · ${t.items.length}` : ''}</div>
+      <section class="card b-list">${rows || `<p class="muted small" style="margin:0">Добавь упражнения в нужном порядке. ${home ? 'Для каждого задай время работы.' : 'Для каждого задай подходы и диапазон повторов: «Форма» будет прибавлять вес, когда доберёшь верх диапазона.'}</p>`}</section>
+      <button class="btn secondary block" data-act="b-add">${icon.plus} Добавить упражнение</button>
+      <button class="btn block" data-act="b-save">Сохранить</button>
+      ${ui.draft.isNew ? '' : '<button class="btn danger block" data-act="b-delete">Удалить тренировку</button>'}`,
+  };
+}
+
+function builderAct(act, el) {
+  const d = ui.draft;
+  if (!d) return;
+  const t = d.t, i = +el.dataset.i, dv = +el.dataset.d;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  if (act === 'b-sec') t.items[i][1] = clamp(t.items[i][1] + dv * 5, 5, 600);
+  else if (act === 'b-sets') t.items[i].sets = clamp(t.items[i].sets + dv, 1, 10);
+  else if (act === 'b-rounds') t.rounds = clamp(t.rounds + dv, 1, 10);
+  else if (act === 'b-rest') t.rest = +el.dataset.v;
+  else if (act === 'b-rrest') t.roundRest = +el.dataset.v;
+  else if (act === 'b-del') t.items.splice(i, 1);
+  else if (act === 'b-up') [t.items[i - 1], t.items[i]] = [t.items[i], t.items[i - 1]];
+  else if (act === 'b-add') {
+    exercisePicker((name) => {
+      if (t.kind === 'home') t.items.push([name, 40]);
+      else {
+        const prog = L.PROGRAMS.flatMap((p) => p.days.flatMap((x) => x.items)).find((x) => x.exercise === name);
+        t.items.push({ exercise: name, sets: prog?.sets || 3, reps: prog?.reps ? [...prog.reps] : (groupOf(name) === 'core' ? [12, 20] : [8, 12]) });
+      }
+      render();
+    });
+    return;
+  } else if (act === 'b-save') {
+    if (!t.title.trim()) t.title = t.kind === 'home' ? 'Моя тренировка дома' : 'Моя тренировка';
+    if (!t.items.length) { toast('Добавь хотя бы одно упражнение'); return; }
+    const clean = L.cleanTemplate(t);
+    state.templates ||= [];
+    const k = state.templates.findIndex((x) => x.id === clean.id);
+    if (k >= 0) state.templates[k] = clean; else state.templates.push(clean);
+    save(); ui.draft = null;
+    toast('Тренировка сохранена');
+    go(clean.kind === 'home' ? `plan-${clean.id}` : 'diary');
+    return;
+  } else if (act === 'b-delete') {
+    confirmSheet('Удалить тренировку?', `«${t.title || 'Без названия'}» пропадёт из списка. Записи в дневнике останутся.`, 'Удалить', () => {
+      state.templates = (state.templates || []).filter((x) => x.id !== t.id);
+      save(); ui.draft = null; go(t.kind === 'home' ? 'home' : 'diary');
+    });
+    return;
+  }
+  render();
+}
+
+function startTemplate(id) {
+  const t = (state.templates || []).find((x) => x.id === id);
+  if (!t || !t.items.length) return;
+  if (state.demo) clearDemo(false);
+  const program = { id: `tpl:${t.id}`, title: t.title, days: [{ title: t.title, items: t.items }] };
+  const w = L.workoutFromProgram(program, 0, state.workouts, groupOf);
+  w.programDay = null;
+  state.workouts.push(w);
+  save();
+  go(`w-${w.id}`);
+}
+
+// ───────── Советник ─────────
+function currentTips() {
+  const ws = state.workouts.filter((w) => w.exercises.length);
+  return L.advisorTips(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), new Date());
+}
+const tipHtml = (t) => `<div class="tip ${t.kind}"><span class="dot">${icon[TIP_ICON[t.kind]] || icon.info}</span><div><b>${esc(t.title)}</b><p>${esc(t.text)}</p></div></div>`;
+
+function advisorCard() {
+  const tips = currentTips();
+  const top = tips[0];
+  return `<a class="card advisor-card" href="#advisor">
+    <div class="cat" style="color:var(--indigo)">${icon.bolt}Советник<span class="when">${tips.length ? `${tips.length} ${plural(tips.length, 'совет', 'совета', 'советов')}` : 'всё в порядке'}${icon.chev}</span></div>
+    ${top ? `<b>${esc(top.title)}</b><p>${esc(top.text)}</p>` : '<p>Замечаний нет. Советник следит за прогрессом весов, перерывами, балансом мышц и замерами InBody и подскажет, когда что-то пойдёт не так.</p>'}</a>`;
+}
+
+const ADVISOR_CHECKS = [
+  ['trend', 'Застой в упражнениях', 'Три тренировки подряд без роста расчётного максимума.'],
+  ['calendar', 'Перерывы', 'Неделя и больше без тренировок: подскажет, с каких весов вернуться.'],
+  ['moon', 'Усталость', 'Шесть и больше недель без лёгкой недели или застой сразу в нескольких упражнениях.'],
+  ['scaleBal', 'Баланс мышц', 'Забытые группы, перекос жимов и тяг, мало подходов в неделю.'],
+  ['person', 'Состав тела', 'Тренд мышц и жира по InBody, разница между сторонами тела.'],
+  ['clock', 'Замеры', 'Давно не было InBody или замеры сделаны в разных условиях.'],
+];
+
+function viewAdvisor() {
+  const tips = currentTips();
+  return {
+    title: 'Советник', top: topBack('#analytics', 'Советник'),
+    html: `<section class="advisor-head"><span class="ic">${icon.bolt}</span><div><h2>Советник</h2><p>${tips.length ? `Есть ${tips.length} ${plural(tips.length, 'совет', 'совета', 'советов')} по твоим тренировкам и замерам.` : 'Сейчас замечаний нет. Продолжай в том же духе.'}</p></div></section>
+      ${tips.length ? `<section class="card">${tips.map(tipHtml).join('')}</section>` : ''}
+      <div class="section-caption">Что проверяет</div>
+      <section class="card list">${ADVISOR_CHECKS.map(([ic, t, d]) => `<div class="item"><span class="thumb" style="--g:var(--indigo)">${icon[ic]}</span><span class="grow"><span class="title">${t}</span><div class="sub">${d}</div></span></div>`).join('')}</section>
+      <p class="footnote" style="margin-top:-8px">Советы считаются прямо в браузере по твоим данным и никуда не отправляются. Чем больше тренировок и замеров, тем точнее советы.</p>`,
+  };
+}
+
 // ───────── Аналитика ─────────
 function viewAnalytics() {
   const ws = state.workouts.filter((w) => w.exercises.length);
@@ -900,10 +1064,7 @@ function viewAnalytics() {
     const d = pv ? ((v - pv) / pv) * 100 : null;
     return `<div class="kpi"><div class="v">${fmt(v)}</div><div class="l">${label}</div>${d != null ? `<div class="d ${d >= 0 ? 'delta good' : 'delta bad'}">${d >= 0 ? '+' : '−'}${num(Math.abs(d), 0)}%</div>` : '<div class="d muted">—</div>'}</div>`;
   };
-  const tips = L.advisorTips(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), now);
-  const tipsHtml = `<section class="card"><h2>Советы<span class="aside">по твоим данным</span></h2>
-    ${tips.length ? tips.slice(0, 5).map((t) => `<div class="tip ${t.kind}"><span class="dot">${icon[TIP_ICON[t.kind]] || icon.info}</span><div><b>${esc(t.title)}</b><p>${esc(t.text)}</p></div></div>`).join('') : '<p class="muted small" style="margin:0">Пока замечаний нет. Советы появятся, когда в дневнике будет хотя бы несколько недель тренировок и пара замеров InBody.</p>'}
-    <p class="small muted" style="margin:10px 0 0">Советы считаются прямо на телефоне по правилам, данные никуда не отправляются.</p></section>`;
+  const tipsHtml = advisorCard();
   if (!ws.length) {
     return { title: 'Аналитика', top: topTitle('Аналитика'), html: `${demoBanner()}${tipsHtml}<section class="card empty"><div class="art">${icon.chart}</div><h2>Нечего считать</h2><p>Запиши пару тренировок в дневник, и здесь появятся тоннаж, нагрузка по группам мышц и прогресс по упражнениям.</p><a class="btn" href="#diary">В дневник</a></section>` };
   }
@@ -1144,7 +1305,7 @@ document.addEventListener('click', (ev) => {
     case 'new-exercise': exercisePicker((name) => exerciseInfo(name), 'Своё упражнение'); break;
     case 'apply-sug': {
       const prev = L.previousEntry(state.workouts, E.name, w.date, w.id);
-      const sug = prev && L.suggest(prev.e.sets, E.name, groupOf(E.name), L.programRange(w, E.name));
+      const sug = prev && L.suggest(prev.e.sets, E.name, groupOf(E.name), rangeFor(w, E.name));
       if (sug) { E.sets = sug.sets.map((s) => ({ ...s, isDone: false })); save(); render(); }
       break;
     }
@@ -1183,12 +1344,25 @@ document.addEventListener('click', (ev) => {
     case 'del-food': state.food = state.food.filter((f) => f.id !== el.dataset.id); save(); render(); break;
     case 'rest': state.settings.restSeconds = +el.dataset.s; save(); render(); break;
     case 'play': startPlayer(el.dataset.id); break;
+    case 'tpl-start': startTemplate(el.dataset.id); break;
+    case 'b-sec': case 'b-sets': case 'b-rounds': case 'b-rest': case 'b-rrest': case 'b-del': case 'b-up': case 'b-add': case 'b-save': case 'b-delete':
+      builderAct(act, el); break;
     default: break;
   }
 });
 
 document.addEventListener('input', (ev) => {
   const el = ev.target;
+  if (el.dataset.b && ui.draft) {
+    const t = ui.draft.t;
+    if (el.dataset.b === 'title') t.title = el.value.slice(0, 60);
+    else {
+      const v = parseNum(el.value);
+      const it = t.items[+el.dataset.i];
+      if (it && v != null && v >= 1 && v <= 100) it.reps[el.dataset.b === 'lo' ? 0 : 1] = Math.round(v);
+    }
+    return;
+  }
   const w = currentWorkout();
   if (!w) return;
   if (el.dataset.in) {

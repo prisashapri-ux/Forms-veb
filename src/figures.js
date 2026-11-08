@@ -41,6 +41,20 @@ const T = {
     props: [{ type: 'line', a: [28, -6], b: [72, -6], width: 3 }],
     frames: [with_(HANG, { k: [53, 67], f: [47, 84] }), { w: [50, -6], e: [40, 6], n: [50, 5], h: [55, -4], p: [50, 33], k: [53, 52], f: [47, 69] }],
   },
+  pullwide: {
+    props: [{ type: 'line', a: [16, -6], b: [84, -6], width: 3 }],
+    frames: [
+      { front: true, h: [50, 9], n: [50, 20], p: [50, 49], k: [46, 69], f: [45, 88], k2: [54, 69], f2: [55, 88], e: [30, 7], w: [24, -6], e2: [70, 7], w2: [76, -6] },
+      { front: true, h: [50, -8], n: [50, 3], p: [50, 32], k: [46, 52], f: [45, 71], k2: [54, 52], f2: [55, 71], e: [30, 13], w: [24, -6], e2: [70, 13], w2: [76, -6] },
+    ],
+  },
+  invrow: {
+    props: [{ type: 'line', a: [16, 48], b: [42, 48], width: 3 }, { type: 'line', a: [18, 48], b: [18, 92], width: 3 }],
+    frames: [
+      { h: [24, 69], n: [32, 72], p: [60, 80], k: [75, 85], f: [90, 89], e: [30, 60], w: [30, 49] },
+      { h: [22, 51], n: [30, 56], p: [59, 71], k: [75, 81], f: [90, 89], e: [42, 61], w: [31, 49] },
+    ],
+  },
   row: { frames: [with_(ROW, { e: [65, 51], w: [64, 65] }), with_(ROW, { e: [54, 36], w: [58, 49] })] },
   cablerow: {
     props: [floor, { type: 'pulley', at: [92, 66] }],
@@ -117,7 +131,10 @@ const MAP = {
   'Жим штанги лёжа': ['bench', 'barbell'], 'Жим гантелей лёжа': ['bench', 'dumbbell'],
   'Жим штанги на наклонной скамье': ['incline', 'barbell'], 'Жим гантелей на наклонной скамье': ['incline', 'dumbbell'],
   'Сведение рук в кроссовере': ['fly', 'cable2'], 'Бабочка (пек-дек)': ['fly', 'none'], 'Отжимания на брусьях': ['dips'],
-  'Подтягивания': ['pullup'], 'Тяга верхнего блока': ['pulldown', 'handle'], 'Тяга штанги в наклоне': ['row', 'barbell'],
+  'Подтягивания': ['pullup'], 'Подтягивания широким хватом': ['pullwide'], 'Подтягивания обратным хватом': ['pullup'],
+  'Подтягивания узким хватом': ['pullup'], 'Подтягивания нейтральным хватом': ['pullup'], 'Подтягивания в гравитроне': ['pullup'],
+  'Подтягивания с резинкой': ['pullup'], 'Негативные подтягивания': ['pullup'], 'Подтягивания с весом': ['pullup', 'dumbbell'],
+  'Австралийские подтягивания': ['invrow'], 'Тяга верхнего блока': ['pulldown', 'handle'], 'Тяга штанги в наклоне': ['row', 'barbell'],
   'Тяга гантели в наклоне': ['row', 'dumbbell'], 'Тяга горизонтального блока': ['cablerow', 'handle'], 'Становая тяга': ['deadlift', 'barbell'],
   'Гиперэкстензия': ['hyper'], 'Приседания со штангой': ['squat', 'barbell'], 'Жим ногами': ['legpress'],
   'Выпады с гантелями': ['lunge', 'dumbbell'], 'Разгибание ног в тренажёре': ['legext'], 'Сгибание ног в тренажёре': ['legcurl'],
@@ -204,7 +221,7 @@ export function figureSVG(name, group, opts = {}) {
     else if (pr.type === 'circle') props += `<circle cx="${pr.at[0]}" cy="${pr.at[1]}" r="${pr.r}" fill="${eqColor}" opacity="0.35"/>`;
     else if (pr.type === 'ring') props += `<circle cx="${pr.at[0]}" cy="${pr.at[1]}" r="${pr.r}" fill="none" stroke="${eqColor}" stroke-width="2.5" opacity="0.35"/>`;
   }
-  if (!tpl.props?.some((p) => p.type === 'floor' || p.type === 'line') && !['pullup', 'hangraise', 'incline', 'legpress', 'hyper'].includes(tplName)) {
+  if (!tpl.props?.some((p) => p.type === 'floor' || p.type === 'line') && !['pullup', 'pullwide', 'hangraise', 'incline', 'legpress', 'hyper', 'invrow'].includes(tplName)) {
     props += `<line x1="18" y1="93" x2="82" y2="93" stroke="${eqColor}" stroke-width="2.5" stroke-linecap="round" opacity="0.25"/>`;
   }
 
