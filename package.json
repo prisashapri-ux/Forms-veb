@@ -1,0 +1,12 @@
+{
+  "name": "forma-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "4.10.38"
+  }
+}

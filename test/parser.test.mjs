@@ -1,0 +1,50 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { parsePdf } from '../src/parser.js';
+
+// Пример отчёта с личными данными лежит только в приватном репозитории приложения.
+const sample = new URL('../../FormaTests/sample_inbody.pdf', import.meta.url);
+const has = fs.existsSync(sample);
+
+test('разбор примера отчёта InBody', { skip: !has && 'нет sample_inbody.pdf' }, async () => {
+  const buf = fs.readFileSync(sample);
+  const r = await parsePdf(pdfjs, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  assert.equal(r.date, '2026-10-03');
+  assert.equal(r.age, 25);
+  assert.equal(r.heightCm, 169);
+  assert.equal(r.values.score, 78);
+  assert.equal(r.values.weight, 69);
+  assert.deepEqual(r.ranges.weight, { min: 53.4, max: 72.2 });
+  assert.equal(r.values.muscleMass, 31.3);
+  assert.deepEqual(r.ranges.muscleMass, { min: 26.7, max: 32.7 });
+  assert.equal(r.values.fatPercent, 19.8);
+  assert.deepEqual(r.ranges.fatPercent, { min: 10, max: 20 });
+  assert.equal(r.values.water, 40.7);
+  assert.equal(r.values.protein, 11);
+  assert.equal(r.values.bone, 3.56);
+  assert.deepEqual(r.ranges.bone, { min: 3.27, max: 3.99 });
+  assert.equal(r.values.visceralFat, 6);
+  assert.deepEqual(r.ranges.visceralFat, { min: 7, max: 10 });
+  assert.equal(r.values.bmi, 24.2);
+  assert.equal(r.values.fatFreeMass, 55.3);
+  assert.equal(r.values.bmr, 1565);
+  assert.equal(r.values.fatMass, 13.7);
+  assert.equal(r.dailyCalories, 2655);
+  assert.equal(r.idealWeight, 65.1);
+  assert.equal(r.toIdealWeight, -3.9);
+  assert.equal(r.toIdealFat, -3.9);
+  assert.equal(r.toIdealMuscle, 0);
+  assert.deepEqual(r.history.map((h) => h.weight), [69.2, 68.2, 68.5, 69.1, 69]);
+  assert.deepEqual(r.history.map((h) => h.muscleMass), [31.5, 31.3, 31.3, 31.1, 31.3]);
+  assert.deepEqual(r.history.map((h) => h.fatPercent), [19.5, 18.9, 19.5, 20.2, 19.8]);
+  assert.deepEqual(r.segmentMuscle.leftArm, { kg: 3.29, percent: 107.3, status: 'normal' });
+  assert.deepEqual(r.segmentMuscle.rightArm, { kg: 3.35, percent: 109.2, status: 'normal' });
+  assert.deepEqual(r.segmentMuscle.trunk, { kg: 26.09, percent: 106.6, status: 'normal' });
+  assert.deepEqual(r.segmentMuscle.leftLeg, { kg: 8.04, percent: 94.2, status: 'normal' });
+  assert.deepEqual(r.segmentMuscle.rightLeg, { kg: 7.97, percent: 93.4, status: 'normal' });
+  assert.deepEqual(r.segmentFat.trunk, { kg: 7.4, percent: 186.55, status: 'above' });
+  assert.deepEqual(r.segmentFat.leftLeg, { kg: 1.9, percent: 117.8, status: 'above' });
+  assert.deepEqual(r.segmentFat.leftArm, { kg: 0.6, percent: 112.35, status: 'normal' });
+});
