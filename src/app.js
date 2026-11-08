@@ -1,10 +1,14 @@
 // «Форма» в браузере: интерфейс. Данные живут в IndexedDB этого устройства.
 import * as L from './logic.js';
 import { CATALOG } from './catalog.js';
-import { lineChart, barChart, dualChart, normScale } from './charts.js';
+import { lineChart, barChart, dualChart, normScale, sparkline, rings } from './charts.js';
 import { loadState, saveState, flush, clearState, persist } from './store.js';
 import { parsePdf, InBodyError } from './parser.js';
 import { demoState } from './demo.js';
+import { figureSVG } from './figures.js';
+import { HOME, HOME_CATALOG, homeById, homeSteps, homeMinutes, homeWorkout } from './home.js';
+
+Object.assign(CATALOG, HOME_CATALOG);
 
 const { num, signed, metricValue, tonnage, plural, fmtDay, dayKey, toDate, METRIC_INFO } = L;
 
@@ -27,7 +31,31 @@ const icon = {
   book: I('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5zM19 19v2H6"/>'),
   dumbbell: I('<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/>'),
   doc: I('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>'),
+  home: I('<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z" fill="currentColor"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="4" width="4.5" height="16" rx="1.4" fill="currentColor"/><rect x="14" y="4" width="4.5" height="16" rx="1.4" fill="currentColor"/></svg>',
+  next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5v13a1 1 0 0 0 1.5.86L15 13.7V18a1 1 0 0 0 2 0V6a1 1 0 0 0-2 0v4.3L5.5 4.64A1 1 0 0 0 4 5.5z" fill="currentColor"/></svg>',
+  prev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5.5v13a1 1 0 0 1-1.5.86L9 13.7V18a1 1 0 0 1-2 0V6a1 1 0 0 1 2 0v4.3l9.5-5.66A1 1 0 0 1 20 5.5z" fill="currentColor"/></svg>',
+  sound: I('<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>'),
+  mute: I('<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>'),
+  clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  flame: I('<path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2.5-5 0 2 1 3 2 3 0-3-1-5.5.5-8z"/>'),
+  repeat: I('<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>'),
+  scale: I('<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 9a5 5 0 0 1 8 0l-3 3"/>'),
+  bolt: I('<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>'),
+  drop: I('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>'),
+  heart: I('<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>'),
+  trend: I('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'),
+  moon: I('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+  scaleBal: I('<path d="M12 3v18M5 21h14M6 7h12M6 7l-3 7a3 3 0 0 0 6 0L6 7zM18 7l-3 7a3 3 0 0 0 6 0l-3-7z"/>'),
+  person: I('<circle cx="12" cy="7" r="3.5"/><path d="M5 21a7 7 0 0 1 14 0"/>'),
+  calendar: I('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+  info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>'),
 };
+
+// Цвет группы мышц для картинок упражнений.
+const GROUP_COLOR = { chest: 'var(--red)', back: 'var(--blue)', legs: 'var(--orange)', glutes: 'var(--pink)', shoulders: 'var(--purple)', biceps: 'var(--teal)', triceps: 'var(--indigo)', core: 'var(--green)', cardio: 'var(--pink)', other: 'var(--muted)' };
+const TIP_ICON = { progress: 'trend', recovery: 'moon', balance: 'scaleBal', body: 'person', habit: 'calendar' };
 
 // ───────── Состояние ─────────
 let state = L.emptyState();
@@ -41,6 +69,13 @@ const parseNum = (s) => { const v = Number(String(s).replace(',', '.').replace(/
 const workoutsSorted = () => [...state.workouts].sort((a, b) => (a.date < b.date ? 1 : -1));
 const fullMeasurements = () => state.measurements.filter((m) => !m.isPartial && !m.source);
 const latestFull = () => fullMeasurements().at(-1) || null;
+
+/** Квадратная картинка упражнения в цвете группы мышц. */
+function thumb(name, { animate = false, size = '' } = {}) {
+  const g = groupOf(name);
+  return `<span class="thumb ${size}" style="--g:${GROUP_COLOR[g] || 'var(--accent)'}">${figureSVG(name, g, { animate, frame: animate ? null : 1 })}</span>`;
+}
+const isHomeWorkout = (w) => typeof w.programID === 'string' && w.programID.startsWith('home:');
 
 function toast(text) {
   const t = document.createElement('div');
@@ -89,27 +124,35 @@ function route() {
 const go = (hash) => { location.hash = hash; };
 addEventListener('hashchange', () => { closeSheet(); render(true); });
 
-const TABS = [['body', 'Тело', icon.body], ['diary', 'Дневник', icon.diary], ['analytics', 'Аналитика', icon.chart], ['food', 'Питание', icon.food]];
-const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
+const TABS = [['body', 'Тело', icon.body, 'var(--purple)'], ['diary', 'Дневник', icon.diary, 'var(--orange)'], ['home', 'Дома', icon.home, 'var(--pink)'], ['analytics', 'Аналитика', icon.chart, 'var(--blue)'], ['food', 'Питание', icon.food, 'var(--green)']];
+const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
+const TAB_TITLE = { body: 'Тело', diary: 'Дневник', home: 'Дома', analytics: 'Аналитика', food: 'Питание' };
 
 function render(scrollTop = false) {
   const r = route();
-  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
+  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
   const v = (views[r.name] || viewBody)(r.arg);
   const y = scrollY;
-  $('#app').innerHTML = `<header class="top">${v.top}</header><main class="view" id="view">${v.html}</main>`;
-  $('#tabs').innerHTML = TABS.map(([id, t, ic]) => `<a href="#${id}" class="${TAB_OF[r.name] === id ? 'on' : ''}" ${TAB_OF[r.name] === id ? 'aria-current="page"' : ''}>${ic}<span>${t}</span></a>`).join('');
+  const tab = TAB_OF[r.name] || 'body';
+  document.body.dataset.tab = tab;
+  $('#app').innerHTML = `<header class="top ${v.top.includes('data-nav') ? 'nav' : ''}">${v.top}</header><main class="view" id="view">${v.html}</main>`;
+  $('#tabs').innerHTML = TABS.map(([id, t, ic, c]) => `<a href="#${id}" style="--tabc:${c}" class="${tab === id ? 'on' : ''}" ${tab === id ? 'aria-current="page"' : ''}>${ic}<span>${t}</span></a>`).join('');
   document.title = v.title ? `${v.title} · Форма` : 'Форма';
   if (scrollTop) scrollTo(0, 0); else scrollTo(0, y);
   v.after?.();
 }
 
-const topTitle = (t, right = '') => `<h1>${esc(t)}</h1>${right}`;
-const topBack = (href, t, right = '') => `<a class="icon-btn" href="${href}" aria-label="Назад">${icon.back}</a><h1 class="small">${esc(t)}</h1>${right || '<span style="width:40px"></span>'}`;
+const todayEyebrow = () => new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+const topTitle = (t, right = '', eyebrow = todayEyebrow()) => `<div class="tt">${eyebrow ? `<span class="date-eyebrow">${esc(eyebrow)}</span>` : ''}<h1>${esc(t)}</h1></div>${right}`;
+const topBack = (href, t, right = '') => {
+  const back = TAB_TITLE[href.slice(1)] || 'Назад';
+  return `<a class="back-btn" href="${href}" data-nav aria-label="Назад: ${esc(back)}">${icon.back}<span>${esc(back)}</span></a><h1 class="small">${esc(t)}</h1><span class="nav-right">${right}</span>`;
+};
+const banner = (html, btn, ic = icon.info, color = 'var(--orange)') => `<div class="banner"><span class="ic" style="background:${color}">${ic}</span><span class="grow">${html}</span>${btn}</div>`;
 
 function demoBanner() {
   if (!state.demo) return '';
-  return `<div class="example-flag"><span class="grow">Сейчас показаны <b>примерные данные</b>, не твои. Удали их, когда загрузишь свой отчёт.</span><button class="btn secondary" data-act="clear-demo">Удалить</button></div>`;
+  return banner('Сейчас показаны <b>примерные данные</b>, не твои. Удали их, когда загрузишь свой отчёт.', '<button class="btn small secondary" data-act="clear-demo">Удалить</button>');
 }
 
 // ───────── Тело ─────────
@@ -156,16 +199,19 @@ function viewBody() {
   const latest = ms.at(-1);
   const prevOf = (metric, before) => [...ms].reverse().find((m) => m.day < before && m.values[metric] != null)?.values[metric];
   const ref = full || latest;
+  const CARD_LOOK = { weight: [icon.scale, 'var(--purple)'], muscleMass: [icon.bolt, 'var(--orange)'], fatPercent: [icon.drop, 'var(--teal)'], fatMass: [icon.drop, 'var(--indigo)'] };
   const cards = ['weight', 'muscleMass', 'fatPercent', 'fatMass'].map((m) => {
     const src = [...ms].reverse().find((x) => x.values[m] != null);
     if (!src) return '';
     const v = src.values[m];
     const tr = trendLine(seriesFor(m));
-    return `<button class="metric ${ui.bodyMetric === m ? 'on' : ''}" data-act="body-metric" data-m="${m}">
-      <span class="label">${METRIC_INFO[m].title}</span>
+    const [ic, col] = CARD_LOOK[m];
+    return `<button class="metric ${ui.bodyMetric === m ? 'on' : ''}" style="--accent:${col}" data-act="body-metric" data-m="${m}">
+      <span class="label">${ic}${METRIC_INFO[m].title}</span>
       <span class="value">${num(v, METRIC_INFO[m].digits)}<small>${METRIC_INFO[m].unit === '%' ? '%' : METRIC_INFO[m].unit}</small></span>
+      ${sparkline(seriesFor(m).slice(-10), col)}
       ${delta(m, v, prevOf(m, src.day)) || '<span class="delta flat">первый замер</span>'}
-      ${tr != null ? `<span class="small muted">тренд ${signed(tr, 1)} ${METRIC_INFO[m].unit} в месяц</span>` : ''}
+      ${tr != null ? `<span class="delta flat">тренд ${signed(tr, 1)} ${METRIC_INFO[m].unit}/мес</span>` : ''}
     </button>`;
   }).join('');
 
@@ -186,7 +232,7 @@ function viewBody() {
     <h2>${METRIC_INFO[metric].title}<span class="aside">${pts.length} ${plural(pts.length, 'замер', 'замера', 'замеров')}</span></h2>
     <div class="chips" role="tablist">${available.map((m) => `<button class="chip ${m === metric ? 'on' : ''}" data-act="body-metric" data-m="${m}">${METRIC_INFO[m].short}</button>`).join('')}</div>
     <div style="margin-top:10px">${lineChart(pts, { band: range, trendLine: tl, label: METRIC_INFO[metric].title })}</div>
-    <div class="legend">${range ? `<span style="--c:var(--band)">норма ${num(range.min)}–${num(range.max)}</span>` : ''}${pts.some((p) => p.partial) ? '<span style="--c:var(--chip)">пустые точки: из таблицы истории</span>' : ''}${tl ? '<span style="--c:var(--muted)">пунктир: тренд</span>' : ''}</div>
+    <div class="legend">${range ? `<span style="--c:var(--accent-soft)">норма ${num(range.min)}–${num(range.max)}</span>` : ''}${pts.some((p) => p.partial) ? '<span style="--c:var(--fill2)">пустые точки: из таблицы истории</span>' : ''}${tl ? '<span style="--c:var(--muted)">пунктир: тренд</span>' : ''}</div>
   </section>`;
 
   let norms = '';
@@ -207,7 +253,7 @@ function viewBody() {
     const data = ui.segMode === 'muscle' ? segSrc.segmentMuscle : segSrc.segmentFat;
     const cells = L.SEGMENTS_ORDER.map((s) => {
       const v = data?.[s];
-      return `<div class="seg-cell ${s}"><span class="t">${L.SEGMENT_TITLES[s]}</span><span class="v">${v ? `${num(v.kg, 2)} кг` : '—'}</span>
+      return `<div class="seg-cell ${s}">${s === 'trunk' ? `<svg class="silhouette" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="10" r="6" fill="currentColor"/><path d="M20 22h24l-3 20h-4l-2 18h-6l-2-18h-4z" fill="currentColor" opacity="0.85"/><path d="M20 22l-7 18M44 22l7 18" stroke="currentColor" stroke-width="5" stroke-linecap="round" opacity="0.5"/></svg>` : ''}<span class="t">${L.SEGMENT_TITLES[s]}</span><span class="v">${v ? `${num(v.kg, 2)} кг` : '—'}</span>
         ${v?.percent != null ? `<span class="small muted tabular">${num(v.percent, 1)}% нормы</span>` : ''}${v?.status ? `<span><span class="badge ${v.status}">${L.STATUS_TITLES[v.status]}</span></span>` : ''}</div>`;
     }).join('');
     const sm = segSrc.segmentMuscle;
@@ -238,18 +284,30 @@ function viewBody() {
 
   const list = [...ms].reverse().slice(0, 12).map((m) => `<button class="item" data-act="measurement" data-day="${m.day}">
       <div class="grow"><div class="title">${fmtDay(m.day)}</div><div class="sub">${m.isPartial ? 'из таблицы истории' : m.source ? 'вес' : (m.conditions ? conditionsText(m.conditions) : 'полный замер')}</div></div>
-      <span class="tabular">${metricValue(m.values.weight, 'weight')}</span>${icon.chev}</button>`).join('');
+      <span class="value">${metricValue(m.values.weight, 'weight')}</span>${icon.chev}</button>`).join('');
 
   const backupNudge = !state.demo && (state.workouts.length + state.measurements.length) > 3 && (!state.settings.lastBackup || L.daysBetween(state.settings.lastBackup, new Date()) > 14)
-    ? `<div class="example-flag"><span class="grow">Данные хранятся только в этом браузере. Сделай резервную копию, чтобы их не потерять.</span><button class="btn secondary" data-act="export">Сохранить</button></div>` : '';
+    ? banner('Данные хранятся только в этом браузере. Сделай резервную копию, чтобы их не потерять.', '<button class="btn small secondary" data-act="export">Сохранить</button>', icon.upload, 'var(--blue)') : '';
+
+  // Сводка: оценка InBody кольцом и мышцы/жир относительно нормы.
+  const score = full?.values.score;
+  const normFrac = (k) => { const r = full?.ranges?.[k], v = full?.values[k]; return r && v != null ? Math.min(1, v / r.max) : 0; };
+  const summary = `<section class="card rings-card">
+      ${rings([{ frac: score != null ? score / 100 : 0, color: 'var(--purple)' }, { frac: normFrac('muscleMass'), color: 'var(--orange)' }, { frac: normFrac('fatMass'), color: 'var(--teal)' }], { label: 'Сводка последнего замера' })}
+      <div class="ring-legend">
+        <div><div class="l" style="color:var(--purple)">Оценка InBody</div><div class="v">${score != null ? num(score, 0) : '—'}<small> / 100</small></div></div>
+        <div><div class="l" style="color:var(--orange)">Мышцы</div><div class="v">${metricValue(ref.values.muscleMass, 'muscleMass')}</div></div>
+        <div><div class="l" style="color:var(--teal)">Жир</div><div class="v">${ref.values.fatPercent != null ? `${num(ref.values.fatPercent, 1)}<small> %</small>` : '—'}</div></div>
+      </div></section>
+      <p class="footnote">Последний замер ${fmtDay(ref.day)}${ref.conditions ? `, ${conditionsText(ref.conditions)}` : ''}. Внешнее кольцо: оценка, два других: мышцы и жир от верхней границы нормы.</p>`;
 
   return {
     title: 'Тело', top: topTitle('Тело', `${importBtn}${gear}`),
-    html: `${demoBanner()}${backupNudge}
-      <section class="hero"><span class="date">Последний замер ${fmtDay(ref.day)}${ref.conditions ? `, ${conditionsText(ref.conditions)}` : ''}</span>
-      ${full?.values.score != null ? `<span>Оценка InBody <b class="tabular">${num(full.values.score, 0)}</b> из 100</span>` : ''}</section>
+    html: `${demoBanner()}${backupNudge}${summary}
+      <div class="section-title">Показатели</div>
       <div class="grid2">${cards}</div>${chart}${norms}${segs}${goals}
-      <section class="card"><h2>Замеры<span class="aside">${ms.length}</span></h2><div class="list">${list}</div></section>
+      <div class="section-title">Замеры</div>
+      <section class="card list">${list}</section>
       <button class="btn block" data-act="import-pdf">${icon.upload} Загрузить новый отчёт</button>`,
   };
 }
@@ -356,6 +414,34 @@ function workoutStats(w) {
   return [`${w.exercises.length} ${plural(w.exercises.length, 'упражнение', 'упражнения', 'упражнений')}`, `${sets} ${plural(sets, 'подход', 'подхода', 'подходов')}`, vol ? tonnage(vol) : null, w.durationMinutes ? `${w.durationMinutes} мин` : null].filter(Boolean);
 }
 
+function weekRings() {
+  const program = L.programById(state.settings.activeProgram);
+  const perWeek = program?.perWeek || 3;
+  const ws0 = L.weekStart(new Date());
+  const week = state.workouts.filter((w) => toDate(w.date) >= ws0 && w.exercises.length);
+  const count = week.length;
+  const mins = week.reduce((a, w) => a + (w.durationMinutes || 0), 0);
+  const sets = week.reduce((a, w) => a + L.workoutSetCount(w), 0);
+  const tMin = perWeek * 45, tSets = perWeek * 18;
+  return `<section class="card rings-card">
+    ${rings([{ frac: count / perWeek, color: 'var(--pink)' }, { frac: mins / tMin, color: 'var(--green)' }, { frac: sets / tSets, color: 'var(--teal)' }], { label: 'Неделя' })}
+    <div class="ring-legend">
+      <div><div class="l" style="color:var(--pink)">Тренировки</div><div class="v">${count}<small> / ${perWeek}</small></div></div>
+      <div><div class="l" style="color:var(--green)">Минуты</div><div class="v">${mins}<small> / ${tMin}</small></div></div>
+      <div><div class="l" style="color:var(--teal)">Подходы</div><div class="v">${sets}<small> / ${tSets}</small></div></div>
+    </div></section>`;
+}
+
+function workoutRow(w) {
+  const first = w.exercises[0]?.name;
+  const home = isHomeWorkout(w);
+  return `<a class="item" href="#w-${w.id}">${first ? thumb(first) : `<span class="thumb">${icon.dumbbell}</span>`}
+    <span class="grow"><span class="title"><b>${esc(w.title)}</b></span>
+      <div class="sub">${w.exercises.map((e) => esc(e.name)).slice(0, 3).join(', ') || 'Без упражнений'}${w.exercises.length > 3 ? ` и ещё ${w.exercises.length - 3}` : ''}</div>
+      <div class="stat-line">${home ? `<span>${w.durationMinutes || 0} мин</span><span>${w.exercises.length} ${plural(w.exercises.length, 'упражнение', 'упражнения', 'упражнений')}</span>` : workoutStats(w).map((x) => `<span>${x}</span>`).join('')}${!w.finishedAt ? '<span class="badge normal">идёт</span>' : ''}</div></span>
+    <span class="value small">${fmtDay(w.date, false)}</span>${icon.chev}</a>`;
+}
+
 function viewDiary() {
   const ws = workoutsSorted();
   const program = L.programById(state.settings.activeProgram);
@@ -364,30 +450,39 @@ function viewDiary() {
   if (program) {
     const d = L.nextDay(program, state.workouts);
     const day = program.days[d];
-    next = `<section class="card next-up"><div class="small muted">${esc(program.title)} · день ${d + 1} из ${program.days.length}</div>
-      <h2 style="margin:4px 0 6px;font-size:22px">${esc(day.title)}</h2>
-      <div class="small muted" style="margin-bottom:12px">${day.items.map((i) => esc(i.exercise)).join(' · ')}</div>
-      <button class="btn block" data-act="start-program" data-day="${d}">Начать тренировку</button></section>`;
+    const first = day.items[0]?.exercise;
+    next = `<section class="card next-up">
+      <div><div class="small muted">${esc(program.title)} · день ${d + 1} из ${program.days.length}</div>
+      <h2 style="margin:4px 0 6px;font:700 24px/29px var(--font-display)">${esc(day.title)}</h2>
+      <div class="small muted">${day.items.map((i) => esc(i.exercise)).join(' · ')}</div></div>
+      ${first ? figureSVG(first, groupOf(first)) : ''}
+      <button class="btn block" data-act="start-program" data-day="${d}">${icon.play} Начать тренировку</button></section>`;
   } else {
-    next = `<section class="card"><h2>Программа</h2><p class="muted small" style="margin:0 0 10px">Выбери готовую программу: «Форма» будет предлагать следующий день и сама прибавлять веса.</p><button class="btn secondary block" data-act="go" data-to="programs">Выбрать программу</button></section>`;
+    next = `<section class="card next-up"><div><div class="small muted">Программа</div><h2 style="margin:4px 0 6px;font:700 24px/29px var(--font-display)">Тренируйся по плану</h2>
+      <div class="small muted">«Форма» будет предлагать следующий день и сама прибавлять веса.</div></div>${figureSVG('Жим штанги лёжа', 'chest')}
+      <button class="btn block" data-act="go" data-to="programs">Выбрать программу</button></section>`;
   }
-  const actions = `<div class="grid2"><button class="btn" data-act="new-workout">${icon.plus} Пустая</button>${ws[0] ? '<button class="btn secondary" data-act="repeat-last">Повторить последнюю</button>' : `<button class="btn secondary" data-act="go" data-to="programs">${icon.list} Программы</button>`}</div>`;
+  const actions = `<section class="card list">
+    <button class="item" data-act="new-workout"><span class="thumb" style="--g:var(--orange)">${icon.plus}</span><span class="grow title">Пустая тренировка</span>${icon.chev}</button>
+    ${ws[0] ? `<button class="item" data-act="repeat-last"><span class="thumb" style="--g:var(--blue)">${icon.repeat}</span><span class="grow"><span class="title">Повторить последнюю</span><div class="sub">${esc(ws[0].title)}</div></span>${icon.chev}</button>` : ''}
+    <a class="item" href="#home"><span class="thumb" style="--g:var(--pink)">${icon.home}</span><span class="grow title">Тренировка дома</span>${icon.chev}</a>
+    <a class="item" href="#programs"><span class="thumb" style="--g:var(--purple)">${icon.list}</span><span class="grow"><span class="title">Программы</span>${program ? `<div class="sub">${esc(program.title)}</div>` : ''}</span>${icon.chev}</a>
+  </section>`;
   let list = '';
   if (!ws.length) {
-    list = `<section class="card empty"><div class="art">${icon.dumbbell}</div><h2>Тренировок пока нет</h2><p>Начни пустую тренировку или выбери программу. Подходы из прошлого раза подставятся сами.</p></section>`;
+    list = `<section class="card empty"><div class="art">${icon.dumbbell}</div><h2>Тренировок пока нет</h2><p>Начни пустую тренировку, выбери программу или позанимайся дома. Подходы из прошлого раза подставятся сами.</p></section>`;
   } else {
     let month = '';
+    let group = [];
+    const flushGroup = () => { if (group.length) list += `<div class="section-title">${month[0].toUpperCase() + month.slice(1)}</div><section class="card list thumbs">${group.join('')}</section>`; group = []; };
     for (const w of ws.slice(0, 60)) {
-      const d = toDate(w.date);
-      const m = d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-      if (m !== month) { list += `<div class="section-title">${m}</div>`; month = m; }
-      list += `<a class="card workout-card" href="#w-${w.id}" style="color:inherit;text-decoration:none">
-        <div class="row"><b class="grow">${esc(w.title)}</b><span class="small muted">${fmtDay(w.date)}</span></div>
-        <div class="small muted" style="overflow-wrap:anywhere">${w.exercises.map((e) => esc(e.name)).join(' · ') || 'Без упражнений'}</div>
-        <div class="stat-line">${workoutStats(w).map((s) => `<span>${s}</span>`).join('')}${!w.finishedAt ? '<span class="badge normal">идёт</span>' : ''}</div></a>`;
+      const m = toDate(w.date).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '');
+      if (m !== month) { flushGroup(); month = m; }
+      group.push(workoutRow(w));
     }
+    flushGroup();
   }
-  return { title: 'Дневник', top: topTitle('Дневник', right), html: `${demoBanner()}${next}${actions}${program ? `<button class="btn ghost" data-act="go" data-to="programs">Сменить программу</button>` : ''}${list}` };
+  return { title: 'Дневник', top: topTitle('Дневник', right), html: `${demoBanner()}<div class="section-title" style="margin-top:0">Эта неделя</div>${weekRings()}${next}${actions}${list}` };
 }
 
 function newWorkout(fromProgram = null, dayIndex = 0) {
@@ -414,7 +509,8 @@ function viewWorkout(id) {
     const range = L.programRange(w, e.name);
     const sug = prev ? L.suggest(prev.e.sets, e.name, g, range) : null;
     const prevText = prev ? `Прошлый раз ${fmtDay(prev.w.date, false)}: ${L.workingSets(prev.e).map((s) => `${num(s.weight, 2)}×${s.reps}`).join(', ')}` : 'Первый раз в дневнике';
-    const isCardio = g === 'cardio';
+    const isCardio = g === 'cardio' && !isHomeWorkout(w);
+    const timed = isHomeWorkout(w);
     const note = state.exercises.find((x) => x.name === e.name)?.note;
     let n = 0;
     const rows = e.sets.map((s, si) => {
@@ -422,17 +518,17 @@ function viewWorkout(id) {
       return `<div class="set-row ${s.isDone ? 'done' : ''}">
         <button class="set-no ${s.isWarmup ? 'warm' : ''}" data-act="toggle-warm" data-e="${ei}" data-s="${si}" aria-label="${s.isWarmup ? 'Разминочный подход, сделать рабочим' : 'Рабочий подход, сделать разминочным'}">${label}</button>
         <input inputmode="decimal" enterkeyhint="next" aria-label="${isCardio ? 'Минуты' : 'Вес, кг'}" data-in="weight" data-e="${ei}" data-s="${si}" value="${s.weight ? num(s.weight, 2).replace(/\s/g, '') : ''}" placeholder="0">
-        <input inputmode="numeric" enterkeyhint="done" aria-label="${isCardio ? 'Минуты' : 'Повторы'}" data-in="reps" data-e="${ei}" data-s="${si}" value="${s.reps || ''}" placeholder="0">
+        <input inputmode="numeric" enterkeyhint="done" aria-label="${isCardio ? 'Километры' : timed ? 'Секунды' : 'Повторы'}" data-in="reps" data-e="${ei}" data-s="${si}" value="${s.reps || ''}" placeholder="0">
         <button class="done-btn ${s.isDone ? 'on' : ''}" data-act="toggle-done" data-e="${ei}" data-s="${si}" aria-label="Подход выполнен" aria-pressed="${s.isDone}">${icon.check}</button>
         <button class="x-btn" data-act="del-set" data-e="${ei}" data-s="${si}" aria-label="Удалить подход">${icon.x}</button></div>`;
     }).join('');
-    return `<section class="card">
-      <div class="ex-head"><button class="name" data-act="exercise-info" data-name="${esc(e.name)}">${esc(e.name)}</button>
-        <button class="icon-btn" style="width:34px;height:34px;box-shadow:none;background:var(--chip)" data-act="ex-menu" data-e="${ei}" aria-label="Действия с упражнением">${icon.more}</button></div>
-      <div class="ex-meta">${L.GROUPS[g]}${range ? ` · цель ${range[0]}–${range[1]} повт.` : ''}${note ? ` · ${esc(note)}` : ''}</div>
+    return `<section class="card ex-card">
+      <div class="ex-head"><button class="thumb-btn" data-act="exercise-info" data-name="${esc(e.name)}" aria-label="Техника: ${esc(e.name)}">${thumb(e.name, { animate: true, size: 'lg' })}</button>
+        <button class="name" data-act="exercise-info" data-name="${esc(e.name)}">${esc(e.name)}<small>${L.GROUPS[g]}${range ? ` · цель ${range[0]}–${range[1]} повт.` : ''}${note ? ` · ${esc(note)}` : ''}</small></button>
+        <button class="icon-btn" data-act="ex-menu" data-e="${ei}" aria-label="Действия с упражнением">${icon.more}</button></div>
       <div class="ex-meta">${esc(prevText)}</div>
-      ${sug ? `<div class="hint"><div class="grow">Сегодня: <b>${esc(sug.headline)}</b><br><span class="muted small">${esc(sug.reason)}</span></div><button class="btn secondary" style="min-height:38px;padding:8px 12px" data-act="apply-sug" data-e="${ei}">Подставить</button></div>` : ''}
-      <div class="sets"><div class="set-row head"><span>№</span><span>${isCardio ? 'мин' : 'кг'}</span><span>${isCardio ? 'км' : 'повт'}</span><span></span><span></span></div>${rows}</div>
+      ${sug ? `<div class="hint"><div class="grow">Сегодня: <b>${esc(sug.headline)}</b><br><span class="muted small">${esc(sug.reason)}</span></div><button class="btn small secondary" data-act="apply-sug" data-e="${ei}">Подставить</button></div>` : ''}
+      <div class="sets"><div class="set-row head"><span>№</span><span>${isCardio ? 'мин' : 'кг'}</span><span>${isCardio ? 'км' : timed ? 'сек' : 'повт'}</span><span></span><span></span></div>${rows}</div>
       <button class="btn ghost block" style="margin-top:6px;min-height:40px" data-act="add-set" data-e="${ei}">${icon.plus} Подход</button>
     </section>`;
   }).join('');
@@ -440,7 +536,7 @@ function viewWorkout(id) {
   const vol = L.workoutVolume(w);
   return {
     title: w.title,
-    top: topBack('#diary', fmtDay(w.date), w.finishedAt ? `<button class="text-btn" data-act="del-workout">Удалить</button>` : `<button class="text-btn" data-act="finish">Готово</button>`),
+    top: topBack('#diary', fmtDay(w.date), w.finishedAt ? `<button class="text-btn" data-act="del-workout">Удалить</button>` : `<button class="text-btn strong" data-act="finish">Готово</button>`),
     html: `<section class="card stack">
         <div class="field"><label for="w-title">Название</label><input id="w-title" data-win="title" value="${esc(w.title)}"></div>
         <div class="grid2"><div class="field"><label for="w-date">Дата и время</label><input id="w-date" type="datetime-local" data-win="date" value="${dateVal}"></div>
@@ -448,9 +544,9 @@ function viewWorkout(id) {
         <div class="stat-line" id="w-stats">${workoutStats(w).map((s) => `<span>${s}</span>`).join('')}</div>
       </section>
       ${blocks || '<section class="card empty"><p>Добавь первое упражнение. Подходы из прошлого раза подставятся сами.</p></section>'}
-      <button class="btn block" data-act="add-exercise">${icon.plus} Упражнение</button>
+      <button class="btn secondary block" data-act="add-exercise">${icon.plus} Добавить упражнение</button>
       <section class="card"><div class="field"><label for="w-note">Заметка</label><textarea id="w-note" data-win="note" placeholder="Самочувствие, что поменять в следующий раз">${esc(w.note)}</textarea></div></section>
-      ${w.finishedAt ? `<p class="small muted" style="text-align:center">Завершена ${fmtDay(w.finishedAt)}${vol ? `, тоннаж ${tonnage(vol)}` : ''}</p>` : `<button class="btn secondary block" data-act="finish">Завершить тренировку</button><button class="btn danger block" data-act="del-workout">Удалить тренировку</button>`}`,
+      ${w.finishedAt ? `<p class="small muted" style="text-align:center">Завершена ${fmtDay(w.finishedAt)}${vol ? `, тоннаж ${tonnage(vol)}` : ''}</p>` : `<button class="btn block" data-act="finish">${icon.check} Завершить тренировку</button><button class="btn danger block" data-act="del-workout">Удалить тренировку</button>`}`,
   };
 }
 
@@ -465,11 +561,11 @@ function exercisePicker(onPick, title = 'Упражнение') {
     const ql = q.trim().toLowerCase();
     const items = state.exercises.filter((e) => !ql || e.name.toLowerCase().includes(ql));
     let html = '';
-    if (!ql && recentNames.length) html += `<div class="section-title">Недавние</div><div class="card list">${recentNames.map((n) => `<button class="item" data-pick="${esc(n)}"><span class="grow title">${esc(n)}</span><span class="small muted">${L.GROUPS[groupOf(n)]}</span></button>`).join('')}</div>`;
+    if (!ql && recentNames.length) html += `<div class="section-caption">Недавние</div><div class="card list thumbs">${recentNames.map((n) => `<button class="item" data-pick="${esc(n)}">${thumb(n)}<span class="grow"><span class="title">${esc(n)}</span><div class="sub">${L.GROUPS[groupOf(n)]}</div></span></button>`).join('')}</div>`;
     for (const g of Object.keys(L.GROUPS)) {
       const gi = items.filter((e) => e.group === g).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
       if (!gi.length) continue;
-      html += `<div class="section-title">${L.GROUPS[g]}</div><div class="card list">${gi.map((e) => `<button class="item" data-pick="${esc(e.name)}"><span class="grow title">${esc(e.name)}</span></button>`).join('')}</div>`;
+      html += `<div class="section-caption">${L.GROUPS[g]}</div><div class="card list thumbs">${gi.map((e) => `<button class="item" data-pick="${esc(e.name)}">${thumb(e.name)}<span class="grow title">${esc(e.name)}</span></button>`).join('')}</div>`;
     }
     if (ql && !items.some((e) => e.name.toLowerCase() === ql)) {
       html = `<div class="card stack"><b>Своё упражнение «${esc(q.trim())}»</b><div class="chips">${Object.entries(L.GROUPS).map(([g, t]) => `<button class="chip" data-new-group="${g}">${t}</button>`).join('')}</div><span class="small muted">Выбери группу мышц, чтобы добавить.</span></div>` + html;
@@ -503,10 +599,11 @@ function exerciseInfo(name) {
   const hist = workoutsSorted().filter((w) => w.exercises.some((e) => e.name === name)).slice(0, 5);
   openSheet({
     title: name, left: 'Закрыть',
-    body: `<div class="card stack"><div class="muted small">${L.GROUPS[groupOf(name)]}${info ? ` · ${esc(info.muscles)}` : ''}</div>
+    body: `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>
+      <div class="card stack"><div class="cat" style="color:${GROUP_COLOR[groupOf(name)]}">${L.GROUPS[groupOf(name)]}</div>${info ? `<div class="muted small" style="margin-top:-6px">${esc(info.muscles)}</div>` : ''}
       ${info?.tips.length ? `<ul class="tips-list">${info.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '<span class="muted small">Подсказок по технике для этого упражнения нет.</span>'}</div>
       <div class="card"><div class="field"><label for="ex-note">Моя заметка: где тренажёр, настройки сиденья</label><textarea id="ex-note">${esc(ex?.note || '')}</textarea></div></div>
-      ${hist.length ? `<div class="card"><h2>Последние разы</h2><div class="list">${hist.map((w) => { const e = w.exercises.find((x) => x.name === name); return `<div class="item"><span class="grow"><span class="title">${fmtDay(w.date)}</span><div class="sub">${L.workingSets(e).map((s) => `${num(s.weight, 2)}×${s.reps}`).join(', ') || '—'}</div></span></div>`; }).join('')}</div></div>` : ''}
+      ${hist.length ? `<div class="section-caption">Последние разы</div><div class="card list">${hist.map((w) => { const e = w.exercises.find((x) => x.name === name); return `<div class="item"><span class="grow"><span class="title">${fmtDay(w.date)}</span><div class="sub tabular">${isHomeWorkout(w) ? e.sets.map((s) => `${s.reps} с`).join(', ') : L.workingSets(e).map((s) => `${num(s.weight, 2)}×${s.reps}`).join(', ') || '—'}</div></span></div>`; }).join('')}</div>` : ''}
       <a class="btn secondary block" href="#ex-${encodeURIComponent(name)}">Прогресс по упражнению</a>
       ${ex?.isCustom && !state.workouts.some((w) => w.exercises.some((e) => e.name === name)) ? '<button class="btn danger block" data-del-ex>Удалить своё упражнение</button>' : ''}`,
     onOpen: (el) => {
@@ -578,22 +675,217 @@ function drawTimer() {
 function viewPrograms() {
   const active = state.settings.activeProgram;
   const cards = L.PROGRAMS.map((p) => `<section class="card stack">
-    <div class="row"><b class="grow" style="font-size:18px">${esc(p.title)}</b>${p.id === active ? '<span class="badge normal">активная</span>' : ''}</div>
-    <div class="small muted">${esc(p.level)} · ${p.perWeek} ${plural(p.perWeek, 'раз', 'раза', 'раз')} в неделю</div>
-    <p style="margin:0">${esc(p.summary)}</p>
+    <div class="row">${thumb(p.days[0].items[0].exercise, { animate: true, size: 'lg' })}<div class="grow"><b style="font-size:19px">${esc(p.title)}</b><div class="small muted">${esc(p.level)} · ${p.perWeek} ${plural(p.perWeek, 'раз', 'раза', 'раз')} в неделю</div></div>${p.id === active ? '<span class="badge normal">активная</span>' : ''}</div>
+    <p style="margin:0;font-size:15px">${esc(p.summary)}</p>
     ${p.days.map((d, i) => `<div><b class="small">${i + 1}. ${esc(d.title)}</b><div class="small muted">${d.items.map((x) => `${esc(x.exercise)} ${x.sets}×${x.reps[0]}–${x.reps[1]}`).join(' · ')}</div></div>`).join('')}
     ${p.id === active ? '<button class="btn secondary" data-act="set-program" data-id="">Отключить программу</button>' : `<button class="btn" data-act="set-program" data-id="${p.id}">Тренироваться по ней</button>`}
   </section>`).join('');
-  return { title: 'Программы', top: topBack('#diary', 'Программы'), html: `<p class="muted small" style="margin:0 4px">Веса растут по двойной прогрессии: сначала добираешь повторы до верха диапазона во всех подходах, потом «Форма» прибавляет вес.</p>${cards}` };
+  return { title: 'Программы', top: topBack('#diary', 'Программы'), html: `<p class="footnote" style="margin-top:0">Веса растут по двойной прогрессии: сначала добираешь повторы до верха диапазона во всех подходах, потом «Форма» прибавляет вес.</p>${cards}` };
 }
 
 function viewCatalog() {
   const groups = Object.keys(L.GROUPS).map((g) => {
     const items = state.exercises.filter((e) => e.group === g).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
     if (!items.length) return '';
-    return `<div class="section-title">${L.GROUPS[g]}</div><section class="card list">${items.map((e) => `<button class="item" data-act="exercise-info" data-name="${esc(e.name)}"><span class="grow"><span class="title">${esc(e.name)}</span>${e.note ? `<div class="sub">${esc(e.note)}</div>` : CATALOG[e.name] ? `<div class="sub">${esc(CATALOG[e.name].muscles)}</div>` : ''}</span>${e.isCustom ? '<span class="badge plain">своё</span>' : ''}${icon.chev}</button>`).join('')}</section>`;
+    return `<div class="section-caption">${L.GROUPS[g]}</div><section class="card list thumbs">${items.map((e) => `<button class="item" data-act="exercise-info" data-name="${esc(e.name)}">${thumb(e.name)}<span class="grow"><span class="title">${esc(e.name)}</span>${e.note ? `<div class="sub">${esc(e.note)}</div>` : CATALOG[e.name] ? `<div class="sub">${esc(CATALOG[e.name].muscles)}</div>` : ''}</span>${e.isCustom ? '<span class="badge plain">своё</span>' : ''}${icon.chev}</button>`).join('')}</section>`;
   }).join('');
   return { title: 'Упражнения', top: topBack('#diary', 'Упражнения', `<button class="icon-btn" data-act="new-exercise" aria-label="Своё упражнение">${icon.plus}</button>`), html: groups };
+}
+
+// ───────── Дома ─────────
+function viewHome() {
+  const ws0 = L.weekStart(new Date());
+  const homeWs = state.workouts.filter(isHomeWorkout);
+  const thisWeek = homeWs.filter((w) => toDate(w.date) >= ws0);
+  const mins = thisWeek.reduce((a, w) => a + (w.durationMinutes || 0), 0);
+  const card = (h, wide = false) => `<a class="home-card ${wide ? 'wide' : ''}" href="#plan-${h.id}" style="--c1:${h.c1};--c2:${h.c2}">
+      ${figureSVG(h.items[0][0], groupOf(h.items[0][0]))}
+      <span class="meta">${homeMinutes(h)} мин · ${esc(h.equipment.toLowerCase())}</span><span class="ttl">${esc(h.title)}</span></a>`;
+  const recent = [...homeWs].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5);
+  return {
+    title: 'Дома', top: topTitle('Дома'),
+    html: `<section class="card rings-card">
+        ${rings([{ frac: thisWeek.length / 3, color: 'var(--pink)' }, { frac: mins / 60, color: 'var(--green)' }], { label: 'Тренировки дома на этой неделе' })}
+        <div class="ring-legend"><div><div class="l" style="color:var(--pink)">Тренировки дома</div><div class="v">${thisWeek.length}<small> / 3 за неделю</small></div></div>
+        <div><div class="l" style="color:var(--green)">Минуты</div><div class="v">${mins}<small> / 60</small></div></div></div></section>
+      <div class="section-title">Готовые тренировки</div>
+      <div class="home-grid">${card(HOME[0], true)}${HOME.slice(1).map((h) => card(h)).join('')}</div>
+      <p class="footnote" style="margin-top:-8px">Таймер ведёт по упражнениям сам: показывает, что делать, считает время и отдых, пищит перед сменой. После тренировки она попадёт в дневник.</p>
+      ${recent.length ? `<div class="section-title">Недавние</div><section class="card list thumbs">${recent.map(workoutRow).join('')}</section>` : ''}`,
+  };
+}
+
+function viewPlan(id) {
+  const h = homeById(id);
+  if (!h) return { title: 'Дома', top: topBack('#home', 'Тренировка'), html: '<section class="card empty"><h2>Тренировка не найдена</h2><a class="btn" href="#home">Ко всем</a></section>' };
+  const n = h.items.length;
+  const list = h.items.map(([ex, sec]) => `<button class="item" data-act="exercise-info" data-name="${esc(ex)}">${thumb(ex, { animate: true })}
+    <span class="grow"><span class="title">${esc(ex)}</span><div class="sub">${esc(CATALOG[ex]?.muscles || L.GROUPS[groupOf(ex)])}</div></span><span class="value">${sec} с</span>${icon.chev}</button>`).join('');
+  return {
+    title: h.title, top: topBack('#home', h.title),
+    html: `<section class="plan-head" style="--c1:${h.c1};--c2:${h.c2}">
+        <h2>${esc(h.title)}</h2>
+        <div class="facts"><span>${icon.clock} ${homeMinutes(h)} мин</span><span>${h.rounds} ${plural(h.rounds, 'круг', 'круга', 'кругов')}</span><span>${n} ${plural(n, 'упражнение', 'упражнения', 'упражнений')}</span></div>
+        <p>${esc(h.level)} · ${esc(h.equipment)}</p>
+        ${figureSVG(h.items[0][0], groupOf(h.items[0][0]))}
+      </section>
+      <p class="footnote" style="margin-top:-8px">${esc(h.summary)}</p>
+      <div class="section-caption">Один круг · отдых ${h.rest} с${h.rounds > 1 ? `, между кругами ${h.roundRest} с` : ''}</div>
+      <section class="card list thumbs">${list}</section>
+      <button class="btn block" style="background:var(--pink)" data-act="play" data-id="${h.id}">${icon.play} Начать</button>`,
+  };
+}
+
+// Плеер: ведёт по шагам «приготовься → работа → отдых», картинка и обратный отсчёт.
+const player = { el: null, plan: null, steps: [], i: 0, endsAt: 0, left: 0, paused: false, tick: null, sound: true, startedAt: 0, lastBeep: null, wake: null, drawnStep: -1 };
+
+function say(text) {
+  if (!player.sound) return;
+  try { const u = new SpeechSynthesisUtterance(text); u.lang = 'ru-RU'; u.rate = 1.05; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch { /* без голоса */ }
+}
+function tone(freq = 880, len = 0.15) {
+  if (!player.sound) return;
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = freq; g.gain.value = 0.18; o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + len);
+  } catch { /* ignore */ }
+}
+
+function startPlayer(id) {
+  const plan = homeById(id);
+  if (!plan) return;
+  try { audioCtx ||= new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume?.(); } catch { /* без звука */ }
+  Object.assign(player, { plan, steps: homeSteps(plan), i: 0, paused: false, startedAt: Date.now(), lastBeep: null, drawnStep: -1 });
+  player.el = document.createElement('div');
+  player.el.className = 'player';
+  player.el.setAttribute('role', 'dialog');
+  player.el.setAttribute('aria-label', plan.title);
+  document.body.append(player.el);
+  document.body.style.overflow = 'hidden';
+  player.el.addEventListener('click', onPlayerClick);
+  navigator.wakeLock?.request('screen').then((l) => { player.wake = l; }).catch(() => {});
+  enterStep(0);
+  player.tick = setInterval(playerTick, 200);
+}
+
+function enterStep(i) {
+  player.i = i;
+  const st = player.steps[i];
+  player.left = st.dur;
+  player.endsAt = Date.now() + st.dur * 1000;
+  player.lastBeep = null;
+  if (st.kind === 'work') say(st.ex);
+  else if (st.kind === 'rest') say(st.roundEnd ? 'Отдых. Дальше новый круг' : 'Отдых');
+  else say(`Приготовься. ${st.ex}`);
+  drawPlayer(true);
+}
+
+function playerTick() {
+  if (!player.el || player.paused) return;
+  const left = Math.max(0, Math.ceil((player.endsAt - Date.now()) / 1000));
+  if (left !== player.left) {
+    player.left = left;
+    if (left > 0 && left <= 3 && player.lastBeep !== left) { player.lastBeep = left; tone(660, 0.12); }
+  }
+  if (Date.now() >= player.endsAt) {
+    tone(990, 0.3);
+    navigator.vibrate?.(150);
+    if (player.i + 1 < player.steps.length) enterStep(player.i + 1); else finishPlayer(true);
+    return;
+  }
+  drawPlayer(false);
+}
+
+function drawPlayer(full) {
+  const st = player.steps[player.i];
+  const plan = player.plan;
+  const works = player.steps.filter((x) => x.kind === 'work');
+  const workIdx = player.steps.slice(0, player.i + 1).filter((x) => x.kind === 'work').length - (st.kind === 'work' ? 1 : 0);
+  const left = player.paused ? player.left : Math.max(0, (player.endsAt - Date.now()) / 1000);
+  const frac = Math.max(0, Math.min(1, left / st.dur));
+  const R = 54, C = 2 * Math.PI * R;
+  const color = st.kind === 'work' ? 'var(--pink)' : st.kind === 'rest' ? 'var(--teal)' : 'var(--orange)';
+  if (full || player.drawnStep !== player.i) {
+    player.drawnStep = player.i;
+    const nextWork = player.steps.slice(player.i + 1).find((x) => x.kind === 'work');
+    const tip = CATALOG[st.ex]?.tips?.[0] || '';
+    player.el.innerHTML = `<div class="bars">${works.map((_, k) => `<i class="${k < workIdx ? 'done' : k === workIdx && st.kind === 'work' ? 'now' : ''}"></i>`).join('')}</div>
+      <div class="ptop"><button class="icon-btn" data-p="close" aria-label="Закончить">${icon.x}</button><span class="grow">Круг ${st.round} из ${plan.rounds}</span>
+        <button class="icon-btn" data-p="sound" aria-label="${player.sound ? 'Выключить звук' : 'Включить звук'}">${player.sound ? icon.sound : icon.mute}</button></div>
+      <div class="stage ${st.kind === 'work' ? '' : 'rest'}" style="--pc:${color}">
+        <span class="phase">${st.kind === 'work' ? 'Работа' : st.kind === 'rest' ? (st.roundEnd ? 'Отдых между кругами' : 'Отдых') : 'Приготовься'}</span>
+        ${figureSVG(st.ex, groupOf(st.ex))}
+        <h2 class="ex-name">${st.kind === 'work' ? '' : '<span class="muted" style="font-weight:600;font-size:17px;display:block">Дальше</span>'}${esc(st.ex)}</h2>
+        <div class="count-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="${R}" fill="none" stroke="${color}" stroke-opacity="0.18" stroke-width="9"/>
+          <circle id="p-arc" cx="60" cy="60" r="${R}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="0" transform="rotate(-90 60 60)"/></svg>
+          <span class="count" id="p-count" role="timer"></span></div>
+        <p class="tipline">${esc(tip)}</p>
+        <p class="next">${st.kind === 'work' && nextWork ? `Потом: ${esc(nextWork.ex)}` : st.kind === 'work' ? 'Последнее упражнение' : ''}</p>
+      </div>
+      <div class="controls"><button data-p="prev" aria-label="Назад">${icon.prev}</button>
+        <button class="main" data-p="toggle" aria-label="${player.paused ? 'Продолжить' : 'Пауза'}" style="background:${color}">${player.paused ? icon.play : icon.pause}</button>
+        <button data-p="next" aria-label="Пропустить">${icon.next}</button></div>`;
+  }
+  const arc = player.el.querySelector('#p-arc');
+  if (arc) arc.setAttribute('stroke-dashoffset', (C * (1 - frac)).toFixed(1));
+  const cnt = player.el.querySelector('#p-count');
+  if (cnt) { const s = Math.ceil(left); cnt.textContent = s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : String(s); }
+}
+
+function onPlayerClick(ev) {
+  const b = ev.target.closest('[data-p]');
+  if (!b) return;
+  const a = b.dataset.p;
+  if (a === 'toggle') {
+    if (player.paused) { player.paused = false; player.endsAt = Date.now() + player.left * 1000; }
+    else { player.left = Math.max(0, (player.endsAt - Date.now()) / 1000); player.paused = true; }
+    drawPlayer(true);
+  } else if (a === 'next') {
+    if (player.i + 1 < player.steps.length) enterStep(player.i + 1); else finishPlayer(true);
+  } else if (a === 'prev') {
+    let j = player.i - 1;
+    while (j > 0 && player.steps[j].kind !== 'work') j--;
+    enterStep(Math.max(0, j));
+  } else if (a === 'sound') {
+    player.sound = !player.sound;
+    if (!player.sound) try { speechSynthesis.cancel(); } catch { /* ignore */ }
+    drawPlayer(true);
+  } else if (a === 'close') {
+    finishPlayer(false);
+  } else if (a === 'done') {
+    closePlayer();
+  }
+}
+
+function closePlayer() {
+  clearInterval(player.tick);
+  player.wake?.release?.().catch(() => {});
+  player.wake = null;
+  try { speechSynthesis.cancel(); } catch { /* ignore */ }
+  player.el?.remove();
+  player.el = null;
+  document.body.style.overflow = '';
+  render();
+}
+
+function finishPlayer(completed) {
+  clearInterval(player.tick);
+  const done = player.steps.slice(0, completed ? player.steps.length : player.i).filter((x) => x.kind === 'work');
+  if (!done.length) { closePlayer(); return; }
+  if (state.demo) clearDemo(false);
+  const w = homeWorkout(player.plan, done, player.startedAt, Date.now(), L.uid());
+  state.workouts.push(w);
+  save();
+  if (!completed) { closePlayer(); toast('Выполненная часть записана в дневник'); return; }
+  say('Готово! Отличная работа');
+  player.el.innerHTML = `<div class="stage">
+      <div class="done-badge">${icon.check}</div>
+      <h2 class="ex-name">Готово!</h2>
+      <p class="tipline">${esc(player.plan.title)}: ${w.durationMinutes} мин, ${done.length} ${plural(done.length, 'отрезок', 'отрезка', 'отрезков')} работы. Тренировка записана в дневник.</p>
+    </div>
+    <div class="controls" style="grid-template-columns:1fr"><button class="main" data-p="done" style="background:var(--pink)">Закрыть</button></div>`;
 }
 
 // ───────── Аналитика ─────────
@@ -610,7 +902,7 @@ function viewAnalytics() {
   };
   const tips = L.advisorTips(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), now);
   const tipsHtml = `<section class="card"><h2>Советы<span class="aside">по твоим данным</span></h2>
-    ${tips.length ? tips.slice(0, 5).map((t) => `<div class="tip ${t.kind}"><span class="dot"></span><div><b>${esc(t.title)}</b><p>${esc(t.text)}</p></div></div>`).join('') : '<p class="muted small" style="margin:0">Пока замечаний нет. Советы появятся, когда в дневнике будет хотя бы несколько недель тренировок и пара замеров InBody.</p>'}
+    ${tips.length ? tips.slice(0, 5).map((t) => `<div class="tip ${t.kind}"><span class="dot">${icon[TIP_ICON[t.kind]] || icon.info}</span><div><b>${esc(t.title)}</b><p>${esc(t.text)}</p></div></div>`).join('') : '<p class="muted small" style="margin:0">Пока замечаний нет. Советы появятся, когда в дневнике будет хотя бы несколько недель тренировок и пара замеров InBody.</p>'}
     <p class="small muted" style="margin:10px 0 0">Советы считаются прямо на телефоне по правилам, данные никуда не отправляются.</p></section>`;
   if (!ws.length) {
     return { title: 'Аналитика', top: topTitle('Аналитика'), html: `${demoBanner()}${tipsHtml}<section class="card empty"><div class="art">${icon.chart}</div><h2>Нечего считать</h2><p>Запиши пару тренировок в дневник, и здесь появятся тоннаж, нагрузка по группам мышц и прогресс по упражнениям.</p><a class="btn" href="#diary">В дневник</a></section>` };
@@ -659,7 +951,7 @@ function viewAnalytics() {
   }
   const exList = [...exMap.values()].sort((a, b) => (a.lastDate < b.lastDate ? 1 : -1)).slice(0, 15).map((x) => {
     const d = x.first ? x.last - x.first : 0;
-    return `<a class="item" href="#ex-${encodeURIComponent(x.name)}" style="color:inherit;text-decoration:none"><span class="grow"><span class="title">${esc(x.name)}</span><div class="sub">${x.count} ${plural(x.count, 'тренировка', 'тренировки', 'тренировок')} · 1ПМ ≈ ${num(x.last, 0)} кг</div></span>${x.count > 1 ? `<span class="delta ${d >= 0 ? 'good' : 'bad'}">${signed(d, 1)} кг</span>` : ''}${icon.chev}</a>`;
+    return `<a class="item" href="#ex-${encodeURIComponent(x.name)}">${thumb(x.name)}<span class="grow"><span class="title">${esc(x.name)}</span><div class="sub">${x.count} ${plural(x.count, 'тренировка', 'тренировки', 'тренировок')} · 1ПМ ≈ ${num(x.last, 0)} кг</div></span>${x.count > 1 ? `<span class="delta ${d >= 0 ? 'good' : 'bad'}">${signed(d, 1)} кг</span>` : ''}${icon.chev}</a>`;
   }).join('');
   // Тело и тренировки.
   let bodyVs = '';
@@ -681,7 +973,7 @@ function viewAnalytics() {
       <section class="card"><h2>Тоннаж по неделям</h2>${barChart(weeks, { format: (v) => (v >= 1000 ? `${num(v / 1000, 1)}т` : num(v, 0)), label: 'Тоннаж по неделям' })}</section>
       <section class="card"><h2>Подходы по группам<span class="aside">≈ ${num(Object.entries(sets).filter(([g]) => g !== 'cardio').reduce((a, [, n]) => a + n, 0) / weeksN, 0)} в неделю</span></h2>${groupsHtml || '<p class="muted small">Нет рабочих подходов за период.</p>'}<p class="small muted" style="margin:8px 0 0">Для роста обычно нужно 10–20 рабочих подходов в неделю на группу.</p></section>
       <section class="card"><h2>Календарь<span class="aside">${streak} ${plural(streak, 'неделя', 'недели', 'недель')} подряд</span></h2><div class="heat" aria-label="Тренировки за 16 недель">${heat}</div></section>
-      <section class="card"><h2>Упражнения</h2><div class="list">${exList || '<p class="muted small">Нет силовых упражнений.</p>'}</div></section>
+      <div class="section-title">Упражнения</div><section class="card list thumbs">${exList || '<p class="muted small">Нет силовых упражнений.</p>'}</section>
       ${bodyVs}`,
   };
 }
@@ -708,7 +1000,8 @@ function viewExercise(nameEnc) {
   const hist = [...rows].reverse().slice(0, 20).map(({ w, e }) => `<div class="item"><span class="grow"><span class="title">${fmtDay(w.date)}</span><div class="sub tabular">${L.workingSets(e).map((s) => `${num(s.weight, 2)}×${s.reps}`).join(', ')}</div></span><span class="small muted tabular">1ПМ ${num(L.bestE1rm(e), 0)}</span></div>`).join('');
   return {
     title: name, top: topBack('#analytics', name),
-    html: `<section class="card"><h2>Расчётный максимум<span class="aside">формула Эпли</span></h2>${lineChart(pts, { label: 'Расчётный максимум' })}</section>
+    html: `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>
+      <section class="card"><h2>Расчётный максимум<span class="aside">формула Эпли</span></h2>${lineChart(pts, { label: 'Расчётный максимум' })}</section>
       <section class="card"><div class="kpis"><div class="kpi"><div class="v">${num(best, 0)}</div><div class="l">лучший 1ПМ, кг</div></div><div class="kpi"><div class="v">${num(maxW, 1)}</div><div class="l">макс. вес, кг</div></div><div class="kpi"><div class="v">${tonnage(maxV)}</div><div class="l">рекорд тоннажа</div></div></div>
       <p class="small muted" style="margin:10px 0 0">Больше всего повторов в подходе: ${maxReps}.</p></section>
       <section class="card"><h2>История</h2><div class="list">${hist}</div></section>
@@ -721,9 +1014,9 @@ function ring(value, target, label, unit) {
   const r = 52, c = 2 * Math.PI * r;
   const frac = target ? Math.min(1, value / target) : 0;
   return `<div class="ring"><svg viewBox="0 0 140 140" role="img" aria-label="${label}: ${num(value, 0)} из ${num(target, 0)} ${unit}">
-    <circle cx="70" cy="70" r="${r}" fill="none" stroke="var(--chip)" stroke-width="12"/>
-    <circle cx="70" cy="70" r="${r}" fill="none" stroke="${value > target * 1.1 ? 'var(--above)' : 'var(--accent)'}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${(c * frac).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 70 70)"/>
-    <text x="70" y="68" text-anchor="middle" style="font:700 24px var(--font-display);fill:var(--fg)">${num(value, 0)}</text>
+    <circle cx="70" cy="70" r="${r}" fill="none" stroke="${value > target * 1.1 ? 'var(--above)' : 'var(--accent)'}" stroke-opacity="0.2" stroke-width="14"/>
+    <circle cx="70" cy="70" r="${r}" fill="none" stroke="${value > target * 1.1 ? 'var(--above)' : 'var(--accent)'}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${(c * frac).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 70 70)"/>
+    <text x="70" y="68" text-anchor="middle" style="font:700 26px var(--font-rounded);fill:var(--fg)">${num(value, 0)}</text>
     <text x="70" y="88" text-anchor="middle" style="font-size:12px;fill:var(--muted)">из ${num(target, 0)} ${unit}</text></svg><span class="lbl">${label}</span></div>`;
 }
 
@@ -889,6 +1182,7 @@ document.addEventListener('click', (ev) => {
     }
     case 'del-food': state.food = state.food.filter((f) => f.id !== el.dataset.id); save(); render(); break;
     case 'rest': state.settings.restSeconds = +el.dataset.s; save(); render(); break;
+    case 'play': startPlayer(el.dataset.id); break;
     default: break;
   }
 });
@@ -931,6 +1225,8 @@ async function start() {
   if (saved && Array.isArray(saved.workouts)) {
     state = { ...L.emptyState(), ...saved, settings: { ...L.emptyState().settings, ...(saved.settings || {}) } };
   }
+  // Новые упражнения из обновлений (например, для дома) добавляются в старый список.
+  for (const [name, group] of L.DEFAULT_EXERCISES) if (!state.exercises.some((e) => e.name === name)) state.exercises.push({ name, group, isCustom: false, note: '' });
   render(true);
   persist();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});

@@ -146,3 +146,36 @@ export function normScale(value, range) {
   return `<div class="scale" aria-hidden="true"><span class="z below"></span><span class="z normal"></span><span class="z above"></span><i class="mark ${status}" style="left:${pos.toFixed(1)}%"></i></div>
   <div class="scale-labels"><span>${num(range.min)}</span><span>${num(range.max)}</span></div>`;
 }
+
+/** Мини-график для карточки показателя, без осей. */
+export function sparkline(points, color = 'var(--accent)') {
+  if (points.length < 2) return '';
+  const W2 = 120, H2 = 30;
+  const xs = points.map((p) => toDate(p.date).getTime());
+  const ys = points.map((p) => p.value);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const sx = (x) => (x1 === x0 ? W2 / 2 : 3 + ((x - x0) / (x1 - x0)) * (W2 - 6));
+  const sy = (y) => (y1 === y0 ? H2 / 2 : H2 - 4 - ((y - y0) / (y1 - y0)) * (H2 - 8));
+  const pts = points.map((p, i) => `${sx(xs[i]).toFixed(1)},${sy(ys[i]).toFixed(1)}`);
+  const last = pts.at(-1).split(',');
+  return `<svg class="spark" viewBox="0 0 ${W2} ${H2}" preserveAspectRatio="none" aria-hidden="true">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="3" fill="${color}"/></svg>`;
+}
+
+/**
+ * Концентрические кольца прогресса. rings: [{frac, color}], от внешнего к внутреннему.
+ */
+export function rings(list, { size = 112, width = 13, gap = 3, label = '' } = {}) {
+  const c = size / 2;
+  let out = '';
+  list.forEach((r, i) => {
+    const rad = c - width / 2 - i * (width + gap);
+    if (rad <= 0) return;
+    const len = 2 * Math.PI * rad;
+    const f = Math.max(0, Math.min(1, r.frac || 0));
+    out += `<circle cx="${c}" cy="${c}" r="${rad.toFixed(1)}" fill="none" stroke="${r.color}" stroke-opacity="0.22" stroke-width="${width}"/>`;
+    if (f > 0) out += `<circle cx="${c}" cy="${c}" r="${rad.toFixed(1)}" fill="none" stroke="${r.color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${(len * f).toFixed(1)} ${len.toFixed(1)}" transform="rotate(-90 ${c} ${c})"/>`;
+  });
+  return `<svg viewBox="0 0 ${size} ${size}" role="img" aria-label="${label}">${out}</svg>`;
+}
