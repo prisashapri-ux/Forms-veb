@@ -12,10 +12,13 @@ function openDb() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
     if (!('indexedDB' in globalThis)) return reject(new Error('no idb'));
-    const req = indexedDB.open(DB_NAME, 1);
+    // На некоторых iPhone открытие базы зависает без ответа: через 3 секунды уходим на localStorage.
+    const t = setTimeout(() => { dbPromise = null; reject(new Error('idb timeout')); }, 3000);
+    let req;
+    try { req = indexedDB.open(DB_NAME, 1); } catch (e) { clearTimeout(t); return reject(e); }
     req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => { clearTimeout(t); resolve(req.result); };
+    req.onerror = () => { clearTimeout(t); reject(req.error); };
   });
   return dbPromise;
 }

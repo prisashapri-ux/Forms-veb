@@ -21,6 +21,40 @@
 <div class="timer" id="timer" hidden></div>
 <div class="tabbar"><nav id="tabs" aria-label="Разделы"></nav></div>
 <noscript><p style="padding:16px">Для «Формы» нужен включённый JavaScript.</p></noscript>
+<script>
+// Заплатки для старых iPhone (iOS 14–15.3) и запасной экран, если приложение не запустилось.
+(function () {
+  function at(i) { i = Math.trunc(i) || 0; if (i < 0) i += this.length; return i < 0 || i >= this.length ? undefined : this[i]; }
+  [Array.prototype, String.prototype].forEach(function (p) { if (!p.at) Object.defineProperty(p, 'at', { value: at, writable: true, configurable: true }); });
+  if (!Object.hasOwn) Object.defineProperty(Object, 'hasOwn', { value: function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); }, writable: true, configurable: true });
+  var why = '';
+  window.addEventListener('error', function (e) { why = why || (e.message || 'ошибка загрузки') + (e.filename ? ' (' + e.filename.split('/').pop().split('?')[0] + ':' + e.lineno + ')' : ''); }, true);
+  window.addEventListener('unhandledrejection', function (e) { why = why || String(e.reason && e.reason.message || e.reason); });
+  window.__formaFail = function (msg) {
+    if (window.__formaBooted) return;
+    window.__formaBooted = true;
+    var m = document.querySelector('main.view');
+    if (!m) return;
+    var ua = navigator.userAgent, inApp = /Telegram|Instagram|FBAN|FBAV|VK|WhatsApp/i.test(ua);
+    m.innerHTML = '<section class="card stack"><h2 style="margin:0">Не получилось запустить «Форму»</h2>' +
+      '<p class="small" style="margin:0">Что помогает:</p><ol class="small" style="margin:0;padding-left:20px">' +
+      (inApp ? '<li>Открой ссылку в Safari или Chrome, а не внутри мессенджера: «…» → «Открыть в браузере».</li>' : '') +
+      '<li>Обнови iOS или браузер. Нужен iOS 14 и новее, Chrome или Safari последних лет.</li>' +
+      '<li>Выключи приватный режим: в нём браузер может не давать сохранять данные.</li>' +
+      '<li>Нажми «Сбросить и обновить» ниже.</li></ol>' +
+      '<button class="btn block" id="boot-reset">Сбросить и обновить</button>' +
+      '<p class="small muted" style="margin:0;overflow-wrap:anywhere">Для разработчика: ' + String(msg || why || 'приложение не ответило за 10 секунд').replace(/[<>&]/g, '') + '<br>' + ua.replace(/[<>&]/g, '') + '</p></section>';
+    document.getElementById('boot-reset').onclick = function () {
+      var jobs = [];
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then(function (r) { return Promise.all(r.map(function (x) { return x.unregister(); })); }));
+      if (window.caches) jobs.push(caches.keys().then(function (k) { return Promise.all(k.map(function (x) { return caches.delete(x); })); }));
+      Promise.all(jobs).catch(function () {}).then(function () { location.reload(); });
+    };
+  };
+  setTimeout(function () { window.__formaFail(); }, 10000);
+})();
+</script>
+<script nomodule>document.querySelector('main.view').innerHTML = '<section class="card"><h2>Браузер слишком старый</h2><p>Обнови iOS или открой ссылку в свежем Safari или Chrome.</p></section>';</script>
 <script type="module" src="app.js?v=__VERSION__"></script>
 </body>
 </html>

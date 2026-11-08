@@ -1610,13 +1610,15 @@ document.addEventListener('keydown', (ev) => {
 
 // ───────── Запуск ─────────
 async function start() {
-  const saved = await loadState();
+  let saved = null;
+  try { saved = await loadState(); } catch { /* без сохранённых данных */ }
   if (saved && Array.isArray(saved.workouts)) {
     state = { ...L.emptyState(), ...saved, settings: { ...L.emptyState().settings, ...(saved.settings || {}) } };
   }
   // Новые упражнения из обновлений (например, для дома) добавляются в старый список.
   for (const [name, group] of L.DEFAULT_EXERCISES) if (!state.exercises.some((e) => e.name === name)) state.exercises.push({ name, group, isCustom: false, note: '' });
   render(true);
+  window.__formaBooted = true;
   persist();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     // Новая версия сайта ставится в фоне; как только она взяла управление, перезагружаемся один раз.
@@ -1634,5 +1636,5 @@ async function start() {
     }).catch(() => {});
   }
 }
-start();
+start().catch((e) => window.__formaFail?.(e?.message || String(e)));
 export { state, flush };
