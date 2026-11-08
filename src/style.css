@@ -561,3 +561,25 @@ main.ai-view { padding-bottom: calc(190px + env(safe-area-inset-bottom, 0px)); g
 .ask-card { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
 .ask-card .grow { flex: 1; min-width: 0; }
 .tabbar a span { white-space: nowrap; }
+
+/* Фото в ИИ-чате */
+.ai-photo-cta { border: 0; text-align: left; display: flex; align-items: center; gap: 12px; width: 100%; font: inherit; color: inherit; }
+.ai-photo-cta .ai-logo.sm { background: linear-gradient(150deg, #5ac8fa, #007aff); }
+.ai-photo-cta > svg { color: var(--muted); width: 18px; height: 18px; flex: none; }
+.ai-msg.user { flex-direction: column; align-items: flex-end; gap: 6px; }
+.ai-pic { max-width: min(62%, 240px); border-radius: 18px; display: block; box-shadow: 0 0 0 0.5px var(--line); }
+.ai-pic.none { padding: 8px 12px; background: var(--fill); color: var(--muted); font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+.ai-pic.none svg { width: 16px; height: 16px; }
+.ai-composer .cam { flex: none; width: 36px; height: 36px; color: var(--indigo); margin-left: -6px; }
+.ai-composer .cam svg { width: 23px; height: 23px; }
+.ai-attach { position: relative; width: 64px; height: 64px; margin-top: 2px; }
+.ai-attach img { width: 64px; height: 64px; object-fit: cover; border-radius: 12px; display: block; }
+.ai-attach .x { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; background: #3a3a3c; color: #fff; }
+.ai-attach .x svg { width: 12px; height: 12px; stroke-width: 3; }
+.ai-ex { background: var(--card); border-radius: 16px; padding: 12px; margin: 4px 0 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 0 0 0.5px var(--line); }
+.ai-ex .head { display: flex; align-items: center; gap: 12px; line-height: 1.3; }
+.ai-ex .head b { font-size: 16px; }
+.ai-ex .btns { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ai-ex .btn.small { background: var(--indigo); }
+.ai-ex .btn.small.ghost { background: var(--fill); color: var(--indigo); min-height: 34px; }
+.ai-ex .btn svg { width: 16px; height: 16px; }

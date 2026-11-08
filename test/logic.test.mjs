@@ -146,9 +146,49 @@ test('сводка для ИИ и запрос к DeepSeek', async () => {
   const ok = await A.ask([{ role: 'user', text: 'x' }], 'S', async (url, o) => { sent = { url, o }; return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: ' Ответ ' } }] }) }; });
   assert.equal(ok, 'Ответ');
   assert.equal(sent.o.headers.Authorization, 'Bearer sk-test');
-  assert.equal(JSON.parse(sent.o.body).model, 'deepseek-chat');
+  assert.equal(JSON.parse(sent.o.body).model, 'deepseek-flash');
+  assert.deepEqual(JSON.parse(sent.o.body).thinking, { type: 'disabled' });
+  localStorage.setItem('forma.deepseek.model', 'deepseek-reasoner');
+  assert.equal(A.getMode(), 'think');
+  await A.ask([{ role: 'user', text: 'x' }], 'S', async (url, o) => { sent = { url, o }; return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'Да' } }] }) }; });
+  assert.deepEqual(JSON.parse(sent.o.body).thinking, { type: 'enabled' });
+  A.setMode('fast');
+  // Если deepseek-flash недоступна, один повтор на deepseek-chat без фото.
+  const bodies = [];
+  const fb = await A.ask([{ role: 'user', text: 'Что это?', image: 'data:image/jpeg;base64,AAA' }], 'S', async (url, o) => {
+    bodies.push(JSON.parse(o.body));
+    return bodies.length === 1 ? { ok: false, status: 400, json: async () => ({ error: { message: 'Model Not Exist' } }) } : { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'Ответ' } }] }) };
+  });
+  assert.equal(bodies[1].model, 'deepseek-chat');
+  assert.equal(typeof bodies[1].messages[1].content, 'string');
+  assert.match(fb, /без учёта снимка/);
   await assert.rejects(A.ask([{ role: 'user', text: 'x' }], 'S', async () => ({ ok: false, status: 402, json: async () => ({}) })), /закончились деньги/);
   void L;
+});
+
+test('фото уходит в DeepSeek, в историю пишется только миниатюра', async () => {
+  const A = await import('../src/ai.js');
+  const msgs = A.buildMessages([{ role: 'user', text: 'Что это?', image: 'data:image/jpeg;base64,BIG', thumb: 'data:image/jpeg;base64,T' }, { role: 'assistant', text: 'Жим' }, { role: 'user', text: 'Ещё', thumb: 'data:image/jpeg;base64,T' }], 'S', ['Жим лёжа']);
+  assert.match(msgs[0].content, /Упражнения в приложении: Жим лёжа\./);
+  assert.equal(msgs[1].content[0].type, 'text');
+  assert.match(msgs[1].content[0].text, /Вопрос: Что это\?/);
+  assert.deepEqual(msgs[1].content[1], { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,BIG', detail: 'high' } });
+  assert.equal(msgs[2].content, 'Жим');
+  assert.equal(msgs[3].content[1].image_url.detail, 'low');
+  globalThis.localStorage = { m: {}, getItem(k) { return this.m[k] ?? null; }, setItem(k, v) { this.m[k] = v; }, removeItem(k) { delete this.m[k]; } };
+  A.saveChats([{ id: 'a', updated: 1, msgs: [{ role: 'user', text: 'x', image: 'BIG', thumb: 'T' }] }]);
+  assert.deepEqual(A.loadChats()[0].msgs[0], { role: 'user', text: 'x', thumb: 'T' });
+});
+
+test('упражнения из ответа ИИ разбираются и не ломают текст', async () => {
+  const A = await import('../src/ai.js');
+  const r = A.parseExercises('Это **жим ногами**.\n\n[[exercise {"name":"Жим ногами","group":"legs","sets":3,"reps":"10-12","weight":62.3}]]\n[[exercise {"name":"Жим ногами","group":"legs"}]]\n[[exercise {"name":"Икры","group":"zzz","sets":99,"reps":"15"}]]\n[[exercise {битый}]]');
+  assert.equal(r.text, 'Это **жим ногами**.');
+  assert.deepEqual(r.exercises, [
+    { name: 'Жим ногами', group: 'legs', sets: 3, reps: [10, 12], weight: 62.5 },
+    { name: 'Икры', group: 'other', sets: 10, reps: [15, 15], weight: 0 },
+  ]);
+  assert.deepEqual(A.parseExercises('Просто текст').exercises, []);
 });
 
 test('разметка ответов ИИ безопасна', async () => {

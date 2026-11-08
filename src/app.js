@@ -54,6 +54,7 @@ const icon = {
   calendar: I('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
   spark: I('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"/>'),
   compose: I('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>'),
+  camera: I('<path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.8l1.5-2h6.4l1.5 2h1.8A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><circle cx="12" cy="12.5" r="3.5"/>'),
   copy: I('<rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>'),
   up: I('<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>'),
   info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>'),
@@ -1060,14 +1061,14 @@ const AI_SUGGEST = [
   ['Сколько белка и калорий?', 'Сколько мне есть белка и калорий под мою цель, судя по замерам?'],
   ['Тренировка на сегодня', 'Предложи тренировку на сегодня с учётом того, что я делал на этой неделе.'],
 ];
-const aiState = { chats: null, id: null, busy: false, draft: '' };
+const aiState = { chats: null, id: null, busy: false, draft: '', photo: null };
 const aiChats = () => (aiState.chats ||= AI.loadChats());
 const aiCurrent = () => aiChats().find((c) => c.id === aiState.id) || null;
 
 function viewAI() {
   const hasKey = !!AI.getKey();
   const chat = aiCurrent();
-  const thinking = AI.getModel() === 'deepseek-reasoner';
+  const thinking = AI.isThinking();
   const left = `<span data-nav class="nav-left"><button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button></span>`;
   const right = `<span class="nav-right"><button class="icon-btn plain" data-act="ai-new" aria-label="Новый чат">${icon.compose}</button></span>`;
   let body;
@@ -1079,20 +1080,70 @@ function viewAI() {
         <button class="btn block" data-act="ai-save" style="background:var(--indigo)">Подключить</button></section>`;
   } else if (!chat || !chat.msgs.length) {
     body = `<div class="ai-hello"><span class="ai-logo">${icon.spark}</span><h2>Чем помочь?</h2><p>Я вижу твой дневник, рабочие веса и замеры InBody.</p></div>
+      <button class="card ai-photo-cta" data-act="ai-photo"><span class="ai-logo sm">${icon.camera}</span><span class="grow"><b>Сфоткай тренажёр</b><div class="small muted">Расскажу, что он качает, как настроить и с каким весом начать, и добавлю в тренировку</div></span>${icon.chev}</button>
       <div class="ai-suggest">${AI_SUGGEST.map(([t, q], i) => `<button data-act="ai-suggest" data-i="${i}"><b>${esc(t)}</b><span>${esc(q)}</span></button>`).join('')}</div>`;
   } else {
-    body = `<div class="ai-feed">${chat.msgs.map((m, i) => m.role === 'user'
-      ? `<div class="ai-msg user"><div class="bubble">${esc(m.text).replace(/\n/g, '<br>')}</div></div>`
-      : `<div class="ai-msg assistant ${m.error ? 'error' : ''}"><span class="ai-ava">${icon.spark}</span><div class="ai-text">${m.error ? esc(m.text) : AI.mdLite(m.text)}
-          ${m.error ? '<div class="ai-actions"><button class="text-btn" data-act="ai-retry">Повторить</button></div>' : `<div class="ai-actions"><button class="icon-btn plain" data-act="ai-copy" data-i="${i}" aria-label="Скопировать">${icon.copy}</button>${m.model === 'deepseek-reasoner' ? '<span class="small muted">думающая</span>' : ''}</div>`}</div></div>`).join('')}
+    body = `<div class="ai-feed">${chat.msgs.map((m, i) => {
+      if (m.role === 'user') {
+        const pic = m.image || m.thumb ? `<img class="ai-pic" src="${esc(m.image || m.thumb)}" alt="Фото">` : m.hadPhoto ? `<div class="ai-pic none">${icon.camera} фото</div>` : '';
+        return `<div class="ai-msg user">${pic}<div class="bubble">${esc(m.text).replace(/\n/g, '<br>')}</div></div>`;
+      }
+      if (m.error) return `<div class="ai-msg assistant error"><span class="ai-ava">${icon.spark}</span><div class="ai-text">${esc(m.text)}<div class="ai-actions"><button class="text-btn" data-act="ai-retry">Повторить</button></div></div></div>`;
+      const { text, exercises } = AI.parseExercises(m.text);
+      return `<div class="ai-msg assistant"><span class="ai-ava">${icon.spark}</span><div class="ai-text">${AI.mdLite(text)}${exercises.map((x, k) => aiExCard(x, m, i, k)).join('')}
+          <div class="ai-actions"><button class="icon-btn plain" data-act="ai-copy" data-i="${i}" aria-label="Скопировать">${icon.copy}</button>${m.model === 'think' || m.model === 'deepseek-reasoner' ? '<span class="small muted">думающая</span>' : ''}</div></div></div>`;
+    }).join('')}
       ${aiState.busy ? `<div class="ai-msg assistant"><span class="ai-ava">${icon.spark}</span><div class="ai-text"><span class="typing"><i></i><i></i><i></i></span>${thinking ? '<span class="small muted"> думает, это может занять минуту</span>' : ''}</div></div>` : ''}</div>`;
   }
   const composer = hasKey ? `<div class="ai-composer"><div class="box">
-      <textarea id="ai-input" rows="1" placeholder="Спроси советника" ${aiState.busy ? 'disabled' : ''}>${esc(aiState.draft)}</textarea>
-      <div class="row2"><button class="pill ${thinking ? 'on' : ''}" data-act="ai-think" aria-pressed="${thinking}">${icon.bolt} Думающая</button>
+      ${aiState.photo ? `<div class="ai-attach"><img src="${aiState.photo.thumb}" alt="Фото к вопросу"><button class="x" data-act="ai-photo-x" aria-label="Убрать фото">${icon.x}</button></div>` : ''}
+      <textarea id="ai-input" rows="1" placeholder="${aiState.photo ? 'Что спросить про фото? Можно оставить пустым' : 'Спроси советника'}" ${aiState.busy ? 'disabled' : ''}>${esc(aiState.draft)}</textarea>
+      <div class="row2"><button class="icon-btn plain cam" data-act="ai-photo" aria-label="Сфотографировать или выбрать фото" ${aiState.busy ? 'disabled' : ''}>${icon.camera}</button>
+        <button class="pill ${thinking ? 'on' : ''}" data-act="ai-think" aria-pressed="${thinking}">${icon.bolt} Думающая</button>
         <details class="ai-peek"><summary>Что видит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}</pre></details>
         <button class="send" data-act="ai-send" aria-label="Отправить" ${aiState.busy ? 'disabled' : ''}>${icon.up}</button></div></div></div>` : '';
   return { title: 'ИИ-советник', cls: 'ai-view', top: `${left}<h1 class="small">ИИ-советник</h1>${right}`, html: `${body}${composer}`, after: () => { autoGrow(); if (chat?.msgs.length) scrollTo(0, document.body.scrollHeight); } };
+}
+
+/** Карточка упражнения из ответа ИИ: добавить в список и в тренировку. */
+function aiExCard(x, m, i, k) {
+  const known = state.exercises.some((e) => e.name.toLowerCase() === x.name.toLowerCase());
+  const wid = m.added?.[x.name];
+  const w = wid && state.workouts.find((q) => q.id === wid);
+  const reps = x.reps[0] === x.reps[1] ? x.reps[0] : `${x.reps[0]}–${x.reps[1]}`;
+  return `<div class="ai-ex" style="--g:${GROUP_COLOR[x.group] || 'var(--accent)'}"><div class="head">${thumb(x.name)}<span class="grow"><b>${esc(x.name)}</b><div class="small muted">${esc(L.GROUPS[x.group])} · ${x.sets}×${reps}${x.weight ? ` · ${num(x.weight, 1)} кг` : ''}</div></span></div>
+    <div class="btns">${w ? `<a class="btn small" href="#w-${w.id}">${icon.check} Открыть тренировку</a>` : `<button class="btn small" data-act="ai-ex-workout" data-i="${i}" data-k="${k}">${icon.plus} В тренировку</button>`}
+      ${known ? '<span class="small muted">Есть в списке упражнений</span>' : `<button class="btn small ghost" data-act="ai-ex-add" data-i="${i}" data-k="${k}">В мои упражнения</button>`}</div></div>`;
+}
+
+function aiExFrom(el) {
+  const m = aiCurrent()?.msgs[+el.dataset.i];
+  const x = m && AI.parseExercises(m.text).exercises[+el.dataset.k];
+  return x ? { m, x } : null;
+}
+
+/** Добавляет упражнение в общий список, если его там нет. Возвращает название, под которым оно записано. */
+function aiEnsureExercise(x) {
+  const have = state.exercises.find((e) => e.name.toLowerCase() === x.name.toLowerCase());
+  if (have) return have.name;
+  state.exercises.push({ name: x.name, group: x.group, isCustom: true, note: '' });
+  return x.name;
+}
+
+/** Фото уменьшается в браузере: до 1280 px для ИИ и до 240 px миниатюра для истории. */
+async function aiPhotoFrom(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, fail) => { const im = new Image(); im.onload = () => ok(im); im.onerror = fail; im.src = url; });
+    const draw = (max, q) => {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', q);
+    };
+    return { image: draw(1280, 0.82), thumb: draw(240, 0.6) };
+  } finally { URL.revokeObjectURL(url); }
 }
 
 function autoGrow() {
@@ -1118,11 +1169,13 @@ function aiHistory() {
 }
 
 async function aiSend(text) {
-  const q = String(text ?? $('#ai-input')?.value ?? '').trim();
+  const photo = text == null ? aiState.photo : null;
+  const q = String(text ?? $('#ai-input')?.value ?? '').trim() || (photo ? 'Что это за тренажёр, как на нём заниматься и с каким весом мне начать?' : '');
   if (!q || aiState.busy) return;
   let chat = aiCurrent();
-  if (!chat) { chat = { id: L.uid(), title: AI.chatTitle(q), created: Date.now(), updated: Date.now(), msgs: [] }; aiChats().push(chat); aiState.id = chat.id; }
-  chat.msgs.push({ role: 'user', text: q.slice(0, 4000) });
+  if (!chat) { chat = { id: L.uid(), title: AI.chatTitle(photo && !$('#ai-input')?.value.trim() ? 'Фото тренажёра' : q), created: Date.now(), updated: Date.now(), msgs: [] }; aiChats().push(chat); aiState.id = chat.id; }
+  chat.msgs.push(photo ? { role: 'user', text: q.slice(0, 4000), image: photo.image, thumb: photo.thumb } : { role: 'user', text: q.slice(0, 4000) });
+  aiState.photo = null;
   chat.updated = Date.now();
   aiState.draft = '';
   await aiRun(chat);
@@ -1132,9 +1185,10 @@ async function aiRun(chat) {
   aiState.busy = true;
   AI.saveChats(aiChats());
   if (route().name === 'ai') render();
-  const model = AI.getModel();
+  const model = AI.getMode();
   try {
-    const answer = await AI.ask(chat.msgs.filter((m) => !m.error).map(({ role, text }) => ({ role, text })), aiSummaryNow());
+    const names = state.exercises.map((e) => e.name);
+    const answer = await AI.ask(chat.msgs.filter((m) => !m.error).map(({ role, text, image, thumb }) => ({ role, text, image, thumb })), aiSummaryNow(), fetch, names);
     chat.msgs.push({ role: 'assistant', text: answer, model });
   } catch (e) {
     chat.msgs.push({ role: 'assistant', text: e.message, error: true });
@@ -1150,8 +1204,34 @@ function aiAct(act, el) {
   else if (act === 'ai-suggest') aiSend(AI_SUGGEST[+el.dataset.i][1]);
   else if (act === 'ai-new') { aiState.id = null; aiState.draft = ''; render(); }
   else if (act === 'ai-history') aiHistory();
-  else if (act === 'ai-think') { AI.setModel(AI.getModel() === 'deepseek-reasoner' ? 'deepseek-chat' : 'deepseek-reasoner'); aiState.draft = $('#ai-input')?.value || ''; render(); }
-  else if (act === 'ai-copy') { const m = aiCurrent()?.msgs[+el.dataset.i]; if (m) navigator.clipboard?.writeText(m.text).then(() => toast('Скопировано'), () => toast('Не получилось скопировать')); }
+  else if (act === 'ai-think') { AI.setMode(AI.isThinking() ? 'fast' : 'think'); aiState.draft = $('#ai-input')?.value || ''; render(); }
+  else if (act === 'ai-photo') {
+    aiState.draft = $('#ai-input')?.value || aiState.draft;
+    pickFile('image/*', async (f) => {
+      try { aiState.photo = await aiPhotoFrom(f); } catch { toast('Не получилось открыть фото'); return; }
+      if (route().name !== 'ai') go('ai');
+      render(); setTimeout(() => $('#ai-input')?.focus(), 0);
+    });
+  }
+  else if (act === 'ai-photo-x') { aiState.photo = null; aiState.draft = $('#ai-input')?.value || ''; render(); }
+  else if (act === 'ai-ex-add') {
+    const r = aiExFrom(el);
+    if (r) { aiEnsureExercise(r.x); save(); render(); toast('Добавлено в упражнения'); }
+  }
+  else if (act === 'ai-ex-workout') {
+    const r = aiExFrom(el);
+    if (!r) return;
+    const wasDemo = state.demo;
+    if (wasDemo) clearDemo(false);
+    const name = aiEnsureExercise(r.x);
+    let w = [...state.workouts].reverse().find((q) => !q.finishedAt && Date.now() - new Date(q.date) < 12 * 3600000);
+    if (!w) { w = { id: L.uid(), date: new Date().toISOString(), title: 'Тренировка', note: '', durationMinutes: null, programID: null, programDay: null, finishedAt: null, exercises: [] }; state.workouts.push(w); }
+    if (!w.exercises.some((e) => e.name === name)) w.exercises.push({ name, sets: Array.from({ length: r.x.sets }, () => ({ weight: r.x.weight, reps: r.x.reps[0], isWarmup: false, isDone: false })) });
+    r.m.added = { ...r.m.added, [r.x.name]: w.id };
+    save(); AI.saveChats(aiChats()); render();
+    if (!wasDemo) toast('Добавлено в тренировку');
+  }
+  else if (act === 'ai-copy') { const m = aiCurrent()?.msgs[+el.dataset.i]; if (m) navigator.clipboard?.writeText(AI.parseExercises(m.text).text).then(() => toast('Скопировано'), () => toast('Не получилось скопировать')); }
   else if (act === 'ai-retry') { const c = aiCurrent(); if (c && c.msgs.at(-1)?.error) { c.msgs.pop(); aiRun(c); } }
 }
 
@@ -1341,7 +1421,7 @@ function viewSettings() {
       <section class="card stack" id="ai-settings"><h2>ИИ-советник (DeepSeek)</h2>
         <p class="small muted" style="margin:0">Чтобы задавать вопросы советнику, нужен свой ключ API DeepSeek. Создай его на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> и пополни баланс: один вопрос стоит меньше рубля. Ключ хранится только в этом браузере и не попадает в резервную копию.</p>
         <div class="field"><label for="ai-key">Ключ API</label><input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" value="${esc(AI.getKey())}"></div>
-        <div class="seg">${AI.MODELS.map(([m, t]) => `<button class="${AI.getModel() === m ? 'on' : ''}" data-act="ai-model" data-m="${m}">${t.split(' ')[0]}</button>`).join('')}</div>
+        <div class="seg">${AI.MODES.map(([m, t]) => `<button class="${AI.getMode() === m ? 'on' : ''}" data-act="ai-model" data-m="${m}">${t}</button>`).join('')}</div>
         <p class="small muted" style="margin:0">«Быстрая» отвечает за секунды. «Думающая» рассуждает дольше и стоит дороже, зато точнее в сложных вопросах. Серверы DeepSeek находятся в Китае.</p>
         <div class="grid2"><button class="btn" data-act="ai-save">Сохранить ключ</button>${AI.getKey() ? '<button class="btn danger" data-act="ai-forget">Удалить ключ</button>' : '<span></span>'}</div></section>
       <section class="card stack"><h2>Таймер отдыха</h2><div class="seg">${[60, 90, 120, 180].map((s) => `<button class="${state.settings.restSeconds === s ? 'on' : ''}" data-act="rest" data-s="${s}">${s < 120 ? `${s} с` : `${s / 60} мин`}</button>`).join('')}</div>
@@ -1468,8 +1548,9 @@ document.addEventListener('click', (ev) => {
     case 'play': startPlayer(el.dataset.id); break;
     case 'tpl-start': startTemplate(el.dataset.id); break;
     case 'ai-send': case 'ai-suggest': case 'ai-new': case 'ai-history': case 'ai-think': case 'ai-copy': case 'ai-retry':
+    case 'ai-photo': case 'ai-photo-x': case 'ai-ex-add': case 'ai-ex-workout':
       ev.preventDefault(); aiAct(act, el); break;
-    case 'ai-model': AI.setModel(el.dataset.m); render(); break;
+    case 'ai-model': AI.setMode(el.dataset.m); render(); break;
     case 'ai-save': {
       const v = $('#ai-key').value.trim();
       if (v && !/^sk-[\w-]{10,}$/.test(v)) { toast('Ключ DeepSeek начинается с sk-'); break; }
