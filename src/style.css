@@ -501,3 +501,7 @@ main.view {
 .chat-foot details { text-align: right; }
 .summary-pre { text-align: left; white-space: pre-wrap; font: 12px/1.4 ui-monospace, Menlo, monospace; background: var(--fill); border-radius: 10px; padding: 10px; margin: 8px 0 0; max-height: 260px; overflow: auto; }
 .chat-foot { flex-wrap: wrap; } .chat-foot details[open] { flex-basis: 100%; }
+
+.advisor-card .ask-ai { margin-top: 8px; align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; background: color-mix(in srgb, var(--indigo) 14%, transparent); color: var(--indigo); font: 600 15px var(--font); }
+.advisor-card .ask-ai svg { width: 16px; height: 16px; stroke-width: 2.2; }
+.chat a.btn { color: #fff; }

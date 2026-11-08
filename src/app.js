@@ -152,6 +152,7 @@ function render(scrollTop = false) {
   const r = route();
   const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, advisor: viewAdvisor, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
   const v = (views[r.name] || viewBody)(r.arg);
+  if (r.name === 'settings' && r.arg === 'ai') setTimeout(() => { $('#ai-settings')?.scrollIntoView({ block: 'start' }); $('#ai-key')?.focus(); }, 0);
   const y = scrollY;
   const tab = TAB_OF[r.name] || 'body';
   if (r.name !== 'build') ui.draft = null;
@@ -1029,7 +1030,8 @@ function advisorCard() {
   const top = tips[0];
   return `<a class="card advisor-card" href="#advisor">
     <div class="cat" style="color:var(--indigo)">${icon.bolt}Советник<span class="when">${tips.length ? `${tips.length} ${plural(tips.length, 'совет', 'совета', 'советов')}` : 'всё в порядке'}${icon.chev}</span></div>
-    ${top ? `<b>${esc(top.title)}</b><p>${esc(top.text)}</p>` : '<p>Замечаний нет. Советник следит за прогрессом весов, перерывами, балансом мышц и замерами InBody и подскажет, когда что-то пойдёт не так.</p>'}</a>`;
+    ${top ? `<b>${esc(top.title)}</b><p>${esc(top.text)}</p>` : '<p>Замечаний нет. Советник следит за прогрессом весов, перерывами, балансом мышц и замерами InBody и подскажет, когда что-то пойдёт не так.</p>'}
+    <span class="ask-ai">${icon.bolt} Спросить ИИ-советника</span></a>`;
 }
 
 const ADVISOR_CHECKS = [
@@ -1052,7 +1054,8 @@ function chatHtml() {
   const msgs = (ui.chat || []).map((m) => `<div class="bubble ${m.role}${m.error ? ' error' : ''}">${esc(m.text).replace(/\n/g, '<br>')}</div>`).join('');
   return `<div class="section-caption">Спросить ИИ</div>
     <section class="card chat">
-      ${hasKey ? '' : `<p class="small muted" style="margin:0">Задай вопрос своими словами, например «почему стоит жим» или «как мне сушиться». ИИ DeepSeek ответит с учётом твоих тренировок и замеров. Для этого добавь ключ DeepSeek в <a href="#settings">настройках</a>.</p>`}
+      ${hasKey ? '' : `<p class="small muted" style="margin:0">Задай вопрос своими словами, например «почему стоит жим» или «как мне сушиться». ИИ DeepSeek ответит с учётом твоих тренировок и замеров. Для этого нужен твой ключ DeepSeek.</p>
+        <a class="btn block" href="#settings-ai" style="background:var(--indigo)">Подключить DeepSeek</a>`}
       ${msgs ? `<div class="bubbles">${msgs}${ui.chatBusy ? '<div class="bubble assistant typing"><i></i><i></i><i></i></div>' : ''}</div>` : ui.chatBusy ? '<div class="bubbles"><div class="bubble assistant typing"><i></i><i></i><i></i></div></div>' : ''}
       ${hasKey ? `<div class="composer"><textarea id="ai-q" rows="2" placeholder="Например: почему не растёт жим лёжа?" ${ui.chatBusy ? 'disabled' : ''}></textarea>
         <button class="send" data-act="ai-send" aria-label="Отправить" ${ui.chatBusy ? 'disabled' : ''}>${icon.back.replace('<svg', '<svg style="transform:rotate(90deg)"')}</button></div>
@@ -1083,8 +1086,8 @@ function viewAdvisor() {
   return {
     title: 'Советник', top: topBack('#analytics', 'Советник'),
     html: `<section class="advisor-head"><span class="ic">${icon.bolt}</span><div><h2>Советник</h2><p>${tips.length ? `Есть ${tips.length} ${plural(tips.length, 'совет', 'совета', 'советов')} по твоим тренировкам и замерам.` : 'Сейчас замечаний нет. Продолжай в том же духе.'}</p></div></section>
-      ${tips.length ? `<section class="card">${tips.map(tipHtml).join('')}</section>` : ''}
       ${chatHtml()}
+      ${tips.length ? `<div class="section-caption">Советы по правилам</div><section class="card">${tips.map(tipHtml).join('')}</section>` : ''}
       <div class="section-caption">Что проверяет</div>
       <section class="card list">${ADVISOR_CHECKS.map(([ic, t, d]) => `<div class="item"><span class="thumb" style="--g:var(--indigo)">${icon[ic]}</span><span class="grow"><span class="title">${t}</span><div class="sub">${d}</div></span></div>`).join('')}</section>
       <p class="footnote" style="margin-top:-8px">Советы по правилам считаются прямо в браузере и никуда не отправляются. В DeepSeek уходит только сводка из «Что увидит ИИ» и твой вопрос, и только когда ты нажимаешь «Отправить».</p>`,
@@ -1457,7 +1460,21 @@ async function start() {
   for (const [name, group] of L.DEFAULT_EXERCISES) if (!state.exercises.some((e) => e.name === name)) state.exercises.push({ name, group, isCustom: false, note: '' });
   render(true);
   persist();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    // Новая версия сайта ставится в фоне; как только она взяла управление, перезагружаемся один раз.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      flush();
+      if (player.el || ui.chatBusy) return;
+      location.reload();
+    });
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+    }).catch(() => {});
+  }
 }
 start();
 export { state, flush };
