@@ -96,3 +96,46 @@ export async function ask(history, summary, fetchFn = fetch) {
   if (!text) throw new Error('Пустой ответ. Попробуй ещё раз.');
   return text;
 }
+
+// ───────── История разговоров (только в этом браузере) ─────────
+const CHATS = 'forma.ai.chats';
+export function loadChats() {
+  try {
+    const v = JSON.parse(ls.get(CHATS) || '[]');
+    return Array.isArray(v) ? v.filter((c) => c && typeof c.id === 'string' && Array.isArray(c.msgs)) : [];
+  } catch { return []; }
+}
+export function saveChats(chats) {
+  const trimmed = [...chats].sort((a, b) => b.updated - a.updated).slice(0, 40).map((c) => ({ ...c, msgs: c.msgs.slice(-80) }));
+  ls.set(CHATS, JSON.stringify(trimmed));
+}
+export const chatTitle = (text) => { const t = String(text).replace(/\s+/g, ' ').trim(); return t.length > 48 ? `${t.slice(0, 46)}…` : t || 'Новый чат'; };
+
+/** Простая разметка ответа: абзацы, списки, **жирный**, `код`, заголовки. Вход экранируется. */
+export function mdLite(src) {
+  const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,!?:;]|$)/g, '$1<i>$2</i>');
+  const out = [];
+  let list = null, para = [];
+  const flushPara = () => { if (para.length) { out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = []; } };
+  const flushList = () => { if (list) { out.push(`<${list.tag}>${list.items.map((i) => `<li>${inline(i)}</li>`).join('')}</${list.tag}>`); list = null; } };
+  for (const raw of String(src).replace(/\r/g, '').split('\n')) {
+    const line = raw.trimEnd();
+    const ul = line.match(/^\s*[-*•]\s+(.*)$/), ol = line.match(/^\s*\d+[.)]\s+(.*)$/), h = line.match(/^\s*#{1,6}\s+(.*)$/);
+    if (!line.trim()) { flushPara(); flushList(); continue; }
+    if (h) { flushPara(); flushList(); out.push(`<h4>${inline(h[1])}</h4>`); continue; }
+    if (ul || ol) {
+      flushPara();
+      const tag = ul ? 'ul' : 'ol';
+      if (list && list.tag !== tag) flushList();
+      list ||= { tag, items: [] };
+      list.items.push((ul || ol)[1]);
+      continue;
+    }
+    if (/^\s*(---|\*\*\*)\s*$/.test(line)) { flushPara(); flushList(); continue; }
+    flushList();
+    para.push(line.trim());
+  }
+  flushPara(); flushList();
+  return out.join('');
+}

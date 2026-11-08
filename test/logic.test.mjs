@@ -150,3 +150,9 @@ test('сводка для ИИ и запрос к DeepSeek', async () => {
   await assert.rejects(A.ask([{ role: 'user', text: 'x' }], 'S', async () => ({ ok: false, status: 402, json: async () => ({}) })), /закончились деньги/);
   void L;
 });
+
+test('разметка ответов ИИ безопасна', async () => {
+  const A = await import('../src/ai.js');
+  const h = A.mdLite('### План\n**Жим** 5×5\n- раз <script>\n- два\n\n1. три');
+  assert.equal(h, '<h4>План</h4><p><b>Жим</b> 5×5</p><ul><li>раз &lt;script&gt;</li><li>два</li></ul><ol><li>три</li></ol>');
+});

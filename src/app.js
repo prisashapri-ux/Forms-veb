@@ -52,6 +52,10 @@ const icon = {
   scaleBal: I('<path d="M12 3v18M5 21h14M6 7h12M6 7l-3 7a3 3 0 0 0 6 0L6 7zM18 7l-3 7a3 3 0 0 0 6 0l-3-7z"/>'),
   person: I('<circle cx="12" cy="7" r="3.5"/><path d="M5 21a7 7 0 0 1 14 0"/>'),
   calendar: I('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+  spark: I('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"/>'),
+  compose: I('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>'),
+  copy: I('<rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>'),
+  up: I('<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>'),
   info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>'),
 };
 
@@ -144,20 +148,20 @@ function route() {
 const go = (hash) => { location.hash = hash; };
 addEventListener('hashchange', () => { closeSheet(); render(true); });
 
-const TABS = [['body', 'Тело', icon.body, 'var(--purple)'], ['diary', 'Дневник', icon.diary, 'var(--orange)'], ['home', 'Дома', icon.home, 'var(--pink)'], ['analytics', 'Аналитика', icon.chart, 'var(--blue)'], ['food', 'Питание', icon.food, 'var(--green)']];
-const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', build: 'diary', advisor: 'analytics', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
-const TAB_TITLE = { body: 'Тело', diary: 'Дневник', home: 'Дома', analytics: 'Аналитика', food: 'Питание' };
+const TABS = [['body', 'Тело', icon.body, 'var(--purple)'], ['diary', 'Дневник', icon.diary, 'var(--orange)'], ['home', 'Дома', icon.home, 'var(--pink)'], ['ai', 'ИИ', icon.spark, 'var(--indigo)'], ['analytics', 'Анализ', icon.chart, 'var(--blue)'], ['food', 'Питание', icon.food, 'var(--green)']];
+const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', build: 'diary', advisor: 'analytics', ai: 'ai', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
+const TAB_TITLE = { body: 'Тело', diary: 'Дневник', home: 'Дома', ai: 'ИИ', analytics: 'Аналитика', food: 'Питание' };
 
 function render(scrollTop = false) {
   const r = route();
-  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, advisor: viewAdvisor, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
+  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, advisor: viewAdvisor, ai: viewAI, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
   const v = (views[r.name] || viewBody)(r.arg);
   if (r.name === 'settings' && r.arg === 'ai') setTimeout(() => { $('#ai-settings')?.scrollIntoView({ block: 'start' }); $('#ai-key')?.focus(); }, 0);
   const y = scrollY;
   const tab = TAB_OF[r.name] || 'body';
   if (r.name !== 'build') ui.draft = null;
   document.body.dataset.tab = tab;
-  $('#app').innerHTML = `<header class="top ${v.top.includes('data-nav') ? 'nav' : ''}">${v.top}</header><main class="view" id="view">${v.html}</main>`;
+  $('#app').innerHTML = `<header class="top ${v.top.includes('data-nav') ? 'nav' : ''}">${v.top}</header><main class="view ${v.cls || ''}" id="view">${v.html}</main>`;
   $('#tabs').innerHTML = TABS.map(([id, t, ic, c]) => `<a href="#${id}" style="--tabc:${c}" class="${tab === id ? 'on' : ''}" ${tab === id ? 'aria-current="page"' : ''}>${ic}<span>${t}</span></a>`).join('');
   document.title = v.title ? `${v.title} · Форма` : 'Форма';
   if (scrollTop) scrollTo(0, 0); else scrollTo(0, y);
@@ -1031,7 +1035,7 @@ function advisorCard() {
   return `<a class="card advisor-card" href="#advisor">
     <div class="cat" style="color:var(--indigo)">${icon.bolt}Советник<span class="when">${tips.length ? `${tips.length} ${plural(tips.length, 'совет', 'совета', 'советов')}` : 'всё в порядке'}${icon.chev}</span></div>
     ${top ? `<b>${esc(top.title)}</b><p>${esc(top.text)}</p>` : '<p>Замечаний нет. Советник следит за прогрессом весов, перерывами, балансом мышц и замерами InBody и подскажет, когда что-то пойдёт не так.</p>'}
-    <span class="ask-ai">${icon.bolt} Спросить ИИ-советника</span></a>`;
+    <span class="ask-ai" data-act="go" data-to="ai">${icon.spark} Спросить ИИ-советника</span></a>`;
 }
 
 const ADVISOR_CHECKS = [
@@ -1049,36 +1053,106 @@ function aiSummaryNow() {
   return AI.aiSummary(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), currentTips(), { age: prof.age, heightCm: prof.heightCm });
 }
 
-function chatHtml() {
+// ───────── ИИ-помощник: отдельный раздел с чатом ─────────
+const AI_SUGGEST = [
+  ['Почему не растут веса?', 'Посмотри мои упражнения: где застой и что поменять в ближайшие 2 недели?'],
+  ['Разбери мой InBody', 'Разбери мои последние замеры InBody: что меняется и на что обратить внимание?'],
+  ['Сколько белка и калорий?', 'Сколько мне есть белка и калорий под мою цель, судя по замерам?'],
+  ['Тренировка на сегодня', 'Предложи тренировку на сегодня с учётом того, что я делал на этой неделе.'],
+];
+const aiState = { chats: null, id: null, busy: false, draft: '' };
+const aiChats = () => (aiState.chats ||= AI.loadChats());
+const aiCurrent = () => aiChats().find((c) => c.id === aiState.id) || null;
+
+function viewAI() {
   const hasKey = !!AI.getKey();
-  const msgs = (ui.chat || []).map((m) => `<div class="bubble ${m.role}${m.error ? ' error' : ''}">${esc(m.text).replace(/\n/g, '<br>')}</div>`).join('');
-  return `<div class="section-caption">Спросить ИИ</div>
-    <section class="card chat">
-      ${hasKey ? '' : `<p class="small muted" style="margin:0">Задай вопрос своими словами, например «почему стоит жим» или «как мне сушиться». ИИ DeepSeek ответит с учётом твоих тренировок и замеров. Для этого нужен твой ключ DeepSeek.</p>
-        <a class="btn block" href="#settings-ai" style="background:var(--indigo)">Подключить DeepSeek</a>`}
-      ${msgs ? `<div class="bubbles">${msgs}${ui.chatBusy ? '<div class="bubble assistant typing"><i></i><i></i><i></i></div>' : ''}</div>` : ui.chatBusy ? '<div class="bubbles"><div class="bubble assistant typing"><i></i><i></i><i></i></div></div>' : ''}
-      ${hasKey ? `<div class="composer"><textarea id="ai-q" rows="2" placeholder="Например: почему не растёт жим лёжа?" ${ui.chatBusy ? 'disabled' : ''}></textarea>
-        <button class="send" data-act="ai-send" aria-label="Отправить" ${ui.chatBusy ? 'disabled' : ''}>${icon.back.replace('<svg', '<svg style="transform:rotate(90deg)"')}</button></div>
-        <div class="chat-foot">${ui.chat?.length ? '<button class="text-btn" data-act="ai-clear">Новый разговор</button>' : '<span></span>'}
-        <details><summary>Что увидит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}</pre></details></div>` : ''}
-    </section>`;
+  const chat = aiCurrent();
+  const thinking = AI.getModel() === 'deepseek-reasoner';
+  const left = `<span data-nav class="nav-left"><button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button></span>`;
+  const right = `<span class="nav-right"><button class="icon-btn plain" data-act="ai-new" aria-label="Новый чат">${icon.compose}</button></span>`;
+  let body;
+  if (!hasKey) {
+    body = `<div class="ai-hello"><span class="ai-logo">${icon.spark}</span><h2>ИИ-советник</h2><p>Спрашивай своими словами про тренировки, питание и замеры. Ответ учитывает твои рабочие веса, подходы и InBody.</p></div>
+      <section class="card stack ai-connect"><b>Подключи DeepSeek</b>
+        <p class="small muted" style="margin:0">Создай ключ на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> и пополни баланс: вопрос стоит меньше рубля. Ключ хранится только в этом браузере.</p>
+        <input id="ai-key" class="search" type="password" autocomplete="off" spellcheck="false" placeholder="Вставь ключ sk-…">
+        <button class="btn block" data-act="ai-save" style="background:var(--indigo)">Подключить</button></section>`;
+  } else if (!chat || !chat.msgs.length) {
+    body = `<div class="ai-hello"><span class="ai-logo">${icon.spark}</span><h2>Чем помочь?</h2><p>Я вижу твой дневник, рабочие веса и замеры InBody.</p></div>
+      <div class="ai-suggest">${AI_SUGGEST.map(([t, q], i) => `<button data-act="ai-suggest" data-i="${i}"><b>${esc(t)}</b><span>${esc(q)}</span></button>`).join('')}</div>`;
+  } else {
+    body = `<div class="ai-feed">${chat.msgs.map((m, i) => m.role === 'user'
+      ? `<div class="ai-msg user"><div class="bubble">${esc(m.text).replace(/\n/g, '<br>')}</div></div>`
+      : `<div class="ai-msg assistant ${m.error ? 'error' : ''}"><span class="ai-ava">${icon.spark}</span><div class="ai-text">${m.error ? esc(m.text) : AI.mdLite(m.text)}
+          ${m.error ? '<div class="ai-actions"><button class="text-btn" data-act="ai-retry">Повторить</button></div>' : `<div class="ai-actions"><button class="icon-btn plain" data-act="ai-copy" data-i="${i}" aria-label="Скопировать">${icon.copy}</button>${m.model === 'deepseek-reasoner' ? '<span class="small muted">думающая</span>' : ''}</div>`}</div></div>`).join('')}
+      ${aiState.busy ? `<div class="ai-msg assistant"><span class="ai-ava">${icon.spark}</span><div class="ai-text"><span class="typing"><i></i><i></i><i></i></span>${thinking ? '<span class="small muted"> думает, это может занять минуту</span>' : ''}</div></div>` : ''}</div>`;
+  }
+  const composer = hasKey ? `<div class="ai-composer"><div class="box">
+      <textarea id="ai-input" rows="1" placeholder="Спроси советника" ${aiState.busy ? 'disabled' : ''}>${esc(aiState.draft)}</textarea>
+      <div class="row2"><button class="pill ${thinking ? 'on' : ''}" data-act="ai-think" aria-pressed="${thinking}">${icon.bolt} Думающая</button>
+        <details class="ai-peek"><summary>Что видит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}</pre></details>
+        <button class="send" data-act="ai-send" aria-label="Отправить" ${aiState.busy ? 'disabled' : ''}>${icon.up}</button></div></div></div>` : '';
+  return { title: 'ИИ-советник', cls: 'ai-view', top: `${left}<h1 class="small">ИИ-советник</h1>${right}`, html: `${body}${composer}`, after: () => { autoGrow(); if (chat?.msgs.length) scrollTo(0, document.body.scrollHeight); } };
 }
 
-async function sendChat() {
-  const q = $('#ai-q')?.value.trim();
-  if (!q || ui.chatBusy) return;
-  ui.chat ||= [];
-  ui.chat.push({ role: 'user', text: q.slice(0, 2000) });
-  ui.chatBusy = true;
-  render();
+function autoGrow() {
+  const t = $('#ai-input');
+  if (!t) return;
+  t.style.height = 'auto';
+  t.style.height = `${Math.min(160, t.scrollHeight)}px`;
+}
+
+function aiHistory() {
+  const chats = [...aiChats()].sort((a, b) => b.updated - a.updated);
+  openSheet({
+    title: 'Разговоры', left: 'Закрыть',
+    body: chats.length ? `<div class="card list">${chats.map((c) => `<div class="item"><button class="item-main" data-open="${c.id}"><span class="grow"><span class="title">${esc(c.title)}</span><div class="sub">${fmtDay(new Date(c.updated))} · ${c.msgs.filter((m) => m.role === 'user').length} ${plural(c.msgs.filter((m) => m.role === 'user').length, 'вопрос', 'вопроса', 'вопросов')}</div></span></button><button class="x-btn" data-del="${c.id}" aria-label="Удалить разговор">${icon.x}</button></div>`).join('')}</div>
+      <button class="btn danger block" data-clear-all>Удалить все разговоры</button>` : '<section class="card empty"><p>Разговоров пока нет.</p></section>',
+    onOpen: (el) => el.addEventListener('click', (e) => {
+      const o = e.target.closest('[data-open]'), d = e.target.closest('[data-del]');
+      if (o) { aiState.id = o.dataset.open; closeSheet(); go('ai'); render(); }
+      else if (d) { aiState.chats = aiChats().filter((c) => c.id !== d.dataset.del); if (aiState.id === d.dataset.del) aiState.id = null; AI.saveChats(aiState.chats); closeSheet(); aiHistory(); render(); }
+      else if (e.target.closest('[data-clear-all]')) { aiState.chats = []; aiState.id = null; AI.saveChats([]); closeSheet(); render(); }
+    }),
+  });
+}
+
+async function aiSend(text) {
+  const q = String(text ?? $('#ai-input')?.value ?? '').trim();
+  if (!q || aiState.busy) return;
+  let chat = aiCurrent();
+  if (!chat) { chat = { id: L.uid(), title: AI.chatTitle(q), created: Date.now(), updated: Date.now(), msgs: [] }; aiChats().push(chat); aiState.id = chat.id; }
+  chat.msgs.push({ role: 'user', text: q.slice(0, 4000) });
+  chat.updated = Date.now();
+  aiState.draft = '';
+  await aiRun(chat);
+}
+
+async function aiRun(chat) {
+  aiState.busy = true;
+  AI.saveChats(aiChats());
+  if (route().name === 'ai') render();
+  const model = AI.getModel();
   try {
-    const answer = await AI.ask(ui.chat.filter((m) => !m.error), aiSummaryNow());
-    ui.chat.push({ role: 'assistant', text: answer });
+    const answer = await AI.ask(chat.msgs.filter((m) => !m.error).map(({ role, text }) => ({ role, text })), aiSummaryNow());
+    chat.msgs.push({ role: 'assistant', text: answer, model });
   } catch (e) {
-    ui.chat.push({ role: 'assistant', text: e.message, error: true });
+    chat.msgs.push({ role: 'assistant', text: e.message, error: true });
   }
-  ui.chatBusy = false;
-  if (route().name === 'advisor') { render(); scrollTo(0, document.body.scrollHeight); }
+  chat.updated = Date.now();
+  aiState.busy = false;
+  AI.saveChats(aiChats());
+  if (route().name === 'ai') render();
+}
+
+function aiAct(act, el) {
+  if (act === 'ai-send') aiSend();
+  else if (act === 'ai-suggest') aiSend(AI_SUGGEST[+el.dataset.i][1]);
+  else if (act === 'ai-new') { aiState.id = null; aiState.draft = ''; render(); }
+  else if (act === 'ai-history') aiHistory();
+  else if (act === 'ai-think') { AI.setModel(AI.getModel() === 'deepseek-reasoner' ? 'deepseek-chat' : 'deepseek-reasoner'); aiState.draft = $('#ai-input')?.value || ''; render(); }
+  else if (act === 'ai-copy') { const m = aiCurrent()?.msgs[+el.dataset.i]; if (m) navigator.clipboard?.writeText(m.text).then(() => toast('Скопировано'), () => toast('Не получилось скопировать')); }
+  else if (act === 'ai-retry') { const c = aiCurrent(); if (c && c.msgs.at(-1)?.error) { c.msgs.pop(); aiRun(c); } }
 }
 
 function viewAdvisor() {
@@ -1086,11 +1160,11 @@ function viewAdvisor() {
   return {
     title: 'Советник', top: topBack('#analytics', 'Советник'),
     html: `<section class="advisor-head"><span class="ic">${icon.bolt}</span><div><h2>Советник</h2><p>${tips.length ? `Есть ${tips.length} ${plural(tips.length, 'совет', 'совета', 'советов')} по твоим тренировкам и замерам.` : 'Сейчас замечаний нет. Продолжай в том же духе.'}</p></div></section>
-      ${chatHtml()}
+      <a class="card ask-card" href="#ai"><span class="ai-logo sm">${icon.spark}</span><span class="grow"><b>Спросить ИИ-советника</b><div class="small muted">Вопросы своими словами, ответ с учётом твоих данных</div></span>${icon.chev}</a>
       ${tips.length ? `<div class="section-caption">Советы по правилам</div><section class="card">${tips.map(tipHtml).join('')}</section>` : ''}
       <div class="section-caption">Что проверяет</div>
       <section class="card list">${ADVISOR_CHECKS.map(([ic, t, d]) => `<div class="item"><span class="thumb" style="--g:var(--indigo)">${icon[ic]}</span><span class="grow"><span class="title">${t}</span><div class="sub">${d}</div></span></div>`).join('')}</section>
-      <p class="footnote" style="margin-top:-8px">Советы по правилам считаются прямо в браузере и никуда не отправляются. В DeepSeek уходит только сводка из «Что увидит ИИ» и твой вопрос, и только когда ты нажимаешь «Отправить».</p>`,
+      <p class="footnote" style="margin-top:-8px">Советы по правилам считаются прямо в браузере и никуда не отправляются.</p>`,
   };
 }
 
@@ -1324,7 +1398,7 @@ document.addEventListener('click', (ev) => {
   const E = w && el.dataset.e != null ? w.exercises[+el.dataset.e] : null;
   const S = E && el.dataset.s != null ? E.sets[+el.dataset.s] : null;
   switch (act) {
-    case 'go': go(el.dataset.to); break;
+    case 'go': ev.preventDefault(); go(el.dataset.to); break;
     case 'import-pdf': pickFile('application/pdf,.pdf', importPdf); break;
     case 'import-backup': pickFile('application/json,.json', importBackup); break;
     case 'export': exportBackup(); break;
@@ -1393,12 +1467,13 @@ document.addEventListener('click', (ev) => {
     case 'rest': state.settings.restSeconds = +el.dataset.s; save(); render(); break;
     case 'play': startPlayer(el.dataset.id); break;
     case 'tpl-start': startTemplate(el.dataset.id); break;
-    case 'ai-send': sendChat(); break;
-    case 'ai-clear': ui.chat = []; render(); break;
+    case 'ai-send': case 'ai-suggest': case 'ai-new': case 'ai-history': case 'ai-think': case 'ai-copy': case 'ai-retry':
+      ev.preventDefault(); aiAct(act, el); break;
     case 'ai-model': AI.setModel(el.dataset.m); render(); break;
     case 'ai-save': {
       const v = $('#ai-key').value.trim();
       if (v && !/^sk-[\w-]{10,}$/.test(v)) { toast('Ключ DeepSeek начинается с sk-'); break; }
+      if (!v && route().name === 'ai') { toast('Вставь ключ'); break; }
       AI.setKey(v); render(); toast(v ? 'Ключ сохранён' : 'Ключ удалён'); break;
     }
     case 'ai-forget': AI.setKey(''); render(); toast('Ключ удалён'); break;
@@ -1410,6 +1485,7 @@ document.addEventListener('click', (ev) => {
 
 document.addEventListener('input', (ev) => {
   const el = ev.target;
+  if (el.id === 'ai-input') { aiState.draft = el.value; autoGrow(); return; }
   if (el.dataset.b && ui.draft) {
     const t = ui.draft.t;
     if (el.dataset.b === 'title') t.title = el.value.slice(0, 60);
@@ -1443,6 +1519,7 @@ document.addEventListener('input', (ev) => {
 
 // Enter в поле веса переводит на повторы, в повторах закрывает клавиатуру.
 document.addEventListener('keydown', (ev) => {
+  if (ev.target.id === 'ai-input' && ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing && matchMedia('(hover: hover)').matches) { ev.preventDefault(); aiSend(); return; }
   if (ev.key !== 'Enter' || !ev.target.dataset?.in) return;
   ev.preventDefault();
   const inputs = [...document.querySelectorAll('[data-in]')];
@@ -1468,7 +1545,7 @@ async function start() {
       if (!hadController || reloaded) return;
       reloaded = true;
       flush();
-      if (player.el || ui.chatBusy) return;
+      if (player.el || aiState.busy) return;
       location.reload();
     });
     navigator.serviceWorker.register('./sw.js').then((reg) => {
