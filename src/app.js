@@ -66,7 +66,7 @@ const TIP_ICON = { progress: 'trend', recovery: 'moon', balance: 'scaleBal', bod
 
 // ───────── Состояние ─────────
 let state = L.emptyState();
-const ui = { bodyMetric: 'weight', segMode: 'muscle', period: 28, timer: null, pdfjs: null };
+const ui = { gymQ: '', gymG: '', calMonth: null, bodyMetric: 'weight', segMode: 'muscle', period: 28, timer: null, pdfjs: null };
 
 function save() { saveState(state); }
 const groupOf = (name) => L.groupOfIn(state, name);
@@ -150,13 +150,13 @@ function route() {
 const go = (hash) => { location.hash = hash; };
 addEventListener('hashchange', () => { closeSheet(); render(true); });
 
-const TABS = [['body', 'Тело', icon.body, 'var(--purple)'], ['diary', 'Дневник', icon.diary, 'var(--orange)'], ['home', 'Дома', icon.home, 'var(--pink)'], ['ai', 'ИИ', icon.spark, 'var(--indigo)'], ['analytics', 'Анализ', icon.chart, 'var(--blue)'], ['food', 'Питание', icon.food, 'var(--green)']];
-const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', build: 'diary', gym: 'diary', advisor: 'analytics', ai: 'ai', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
-const TAB_TITLE = { body: 'Тело', diary: 'Дневник', home: 'Дома', ai: 'ИИ', analytics: 'Аналитика', food: 'Питание' };
+const TABS = [['body', 'Тело', icon.body, 'var(--purple)'], ['diary', 'Дневник', icon.diary, 'var(--orange)'], ['gym', 'Тренажёры', icon.dumbbell, 'var(--teal)'], ['home', 'Дома', icon.home, 'var(--pink)'], ['ai', 'ИИ', icon.spark, 'var(--indigo)'], ['analytics', 'Анализ', icon.chart, 'var(--blue)'], ['food', 'Питание', icon.food, 'var(--green)']];
+const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', build: 'diary', gym: 'gym', calendar: 'diary', advisor: 'analytics', ai: 'ai', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
+const TAB_TITLE = { body: 'Тело', diary: 'Дневник', gym: 'Тренажёры', home: 'Дома', ai: 'ИИ', analytics: 'Аналитика', food: 'Питание' };
 
 function render(scrollTop = false) {
   const r = route();
-  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, gym: viewGym, advisor: viewAdvisor, ai: viewAI, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
+  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, gym: viewGym, calendar: viewCalendar, advisor: viewAdvisor, ai: viewAI, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
   const v = (views[r.name] || viewBody)(r.arg);
   if (r.name === 'settings' && r.arg === 'ai') setTimeout(() => { $('#ai-settings')?.scrollIntoView({ block: 'start' }); $('#ai-key')?.focus(); }, 0);
   const y = scrollY;
@@ -498,7 +498,6 @@ function viewDiary() {
   const actions = `<section class="card list">
     <button class="item" data-act="new-workout"><span class="thumb" style="--g:var(--orange)">${icon.plus}</span><span class="grow title">Пустая тренировка</span>${icon.chev}</button>
     ${ws[0] ? `<button class="item" data-act="repeat-last"><span class="thumb" style="--g:var(--blue)">${icon.repeat}</span><span class="grow"><span class="title">Повторить последнюю</span><div class="sub">${esc(ws[0].title)}</div></span>${icon.chev}</button>` : ''}
-    <a class="item" href="#gym"><span class="thumb" style="--g:var(--teal)">${icon.camera}</span><span class="grow"><span class="title">Мой зал</span><div class="sub">${machines().length ? `${machines().length} ${plural(machines().length, 'тренажёр', 'тренажёра', 'тренажёров')} · узнать по фото` : 'Сфоткай тренажёр, приложение его запомнит'}</div></span>${icon.chev}</a>
     <a class="item" href="#home"><span class="thumb" style="--g:var(--pink)">${icon.home}</span><span class="grow title">Тренировка дома</span>${icon.chev}</a>
     <a class="item" href="#programs"><span class="thumb" style="--g:var(--purple)">${icon.list}</span><span class="grow"><span class="title">Программы</span>${program ? `<div class="sub">${esc(program.title)}</div>` : ''}</span>${icon.chev}</a>
   </section>`;
@@ -516,7 +515,7 @@ function viewDiary() {
     }
     flushGroup();
   }
-  return { title: 'Дневник', top: topTitle('Дневник', right), html: `${demoBanner()}<div class="section-title" style="margin-top:0">Эта неделя</div>${weekRings()}${advisorCard()}${next}${actions}${mineHtml}${list}` };
+  return { title: 'Дневник', top: topTitle('Дневник', right), html: `${demoBanner()}<div class="section-title" style="margin-top:0">Эта неделя</div>${weekRings()}${calendarCard()}${advisorCard()}${next}${actions}${mineHtml}${list}` };
 }
 
 function newWorkout(fromProgram = null, dayIndex = 0) {
@@ -533,6 +532,61 @@ function setText(s, name, w) {
   if (isHomeWorkout(w)) return `${s.reps} с`;
   if (groupOf(name) !== 'cardio') return `${num(s.weight, 2)}×${s.reps}`;
   return [s.weight ? `${num(s.weight, 2)} мин` : '', s.reps ? `${s.reps} км` : '', s.level ? `ур. ${num(s.level, 1)}` : ''].filter(Boolean).join(' · ') || '—';
+}
+
+// ───────── Календарь тренировок ─────────
+const dayKeyOf = (d) => { const x = toDate(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+const calBase = () => { const d = ui.calMonth ? new Date(ui.calMonth) : new Date(); d.setDate(1); d.setHours(12, 0, 0, 0); return d; };
+function workoutsByDay() {
+  const map = new Map();
+  for (const w of state.workouts) { const k = dayKeyOf(w.date); if (!map.has(k)) map.set(k, []); map.get(k).push(w); }
+  return map;
+}
+function monthGrid(base, byDay, small = false) {
+  const y = base.getFullYear(), m = base.getMonth();
+  const first = (new Date(y, m, 1).getDay() + 6) % 7;
+  const days = new Date(y, m + 1, 0).getDate();
+  const today = dayKeyOf(new Date());
+  let cells = '';
+  for (let i = 0; i < first; i++) cells += '<span></span>';
+  for (let d = 1; d <= days; d++) {
+    const k = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const ws = byDay.get(k) || [];
+    const home = ws.length && ws.every((w) => isHomeWorkout(w));
+    cells += `<button class="cal-d ${ws.length ? (home ? 'has home' : 'has') : ''} ${k === today ? 'today' : ''}" data-act="cal-day" data-day="${k}" aria-label="${d}${ws.length ? `, тренировок: ${ws.length}` : ''}">${d}</button>`;
+  }
+  return `<div class="cal ${small ? 'small' : ''}"><div class="cal-w">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((t) => `<span>${t}</span>`).join('')}</div><div class="cal-g">${cells}</div></div>`;
+}
+const monthTitle = (d) => { const t = d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', ''); return t[0].toUpperCase() + t.slice(1); };
+function calendarCard() {
+  const base = calBase();
+  const byDay = workoutsByDay();
+  const prefix = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
+  const n = [...byDay.keys()].filter((k) => k.startsWith(prefix)).length;
+  return `<div class="section-title">Календарь</div><section class="card cal-card">
+    <div class="cal-head"><button class="icon-btn" data-act="cal-month" data-d="-1" aria-label="Прошлый месяц">${icon.back}</button>
+    <a href="#calendar" class="grow"><b>${monthTitle(base)}</b><div class="small muted">${n ? `${n} ${plural(n, 'день', 'дня', 'дней')} с тренировкой` : 'Тренировок не было'}</div></a>
+    <button class="icon-btn fwd" data-act="cal-month" data-d="1" aria-label="Следующий месяц">${icon.back}</button></div>
+    ${monthGrid(base, byDay, true)}</section>`;
+}
+function viewCalendar() {
+  const byDay = workoutsByDay();
+  const base = calBase();
+  const months = [];
+  for (let i = 0; i < 6; i++) { const d = new Date(base); d.setMonth(d.getMonth() - i); months.push(d); }
+  const total = (d) => { const p = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; return [...byDay.keys()].filter((k) => k.startsWith(p)).length; };
+  return { title: 'Календарь', top: topBack('#diary', 'Календарь'), html: months.map((d) => `<div class="section-title">${monthTitle(d)}${total(d) ? ` · ${total(d)} ${plural(total(d), 'день', 'дня', 'дней')}` : ''}</div><section class="card cal-card">${monthGrid(d, byDay)}</section>`).join('') + '<p class="small muted" style="text-align:center">Оранжевым отмечены дни в зале, розовым дома. Нажми на день, чтобы открыть тренировку.</p>' };
+}
+function calDay(k) {
+  const ws = workoutsByDay().get(k) || [];
+  if (ws.length === 1) { go(`w-${ws[0].id}`); return; }
+  const date = new Date(`${k}T12:00:00`);
+  const title = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+  openSheet({
+    title: title[0].toUpperCase() + title.slice(1), left: 'Закрыть',
+    body: ws.length ? `<section class="card list thumbs">${ws.map(workoutRow).join('')}</section>`
+      : `<p class="muted" style="margin:0">В этот день тренировки не было.</p>${k === dayKeyOf(new Date()) ? '<button class="btn block" data-act="new-workout">Начать тренировку</button>' : ''}`,
+  });
 }
 
 // ───────── Мой зал: свои тренажёры с фото и настройками ─────────
@@ -558,23 +612,30 @@ function lastResult(name) {
   return sets.length ? `${fmtDay(prev.w.date, false)}: ${sets.map((q) => setText(q, name, prev.w)).join(', ')}` : '';
 }
 
+let gymTried = false;
 function viewGym() {
-  const list = [...machines()].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  const all = machines();
+  if (!all.length && !gymSyncing && !gymTried) { gymTried = true; setTimeout(() => syncGymBase(true), 0); }
   const hasKey = !!AI.getKey();
-  const hero = `<section class="card gym-hero"><span class="ai-logo">${icon.camera}</span>
-    <h2>Узнать тренажёр по фото</h2>
-    <p class="small muted">${hasKey ? 'ИИ сравнит фото с твоими тренажёрами. Если это новый, предложит название, упражнение и как его настроить.' : 'Для фото нужен ключ DeepSeek: подключи его во вкладке «ИИ». Без него тренажёры можно добавлять вручную.'}</p>
-    ${hasKey ? `<button class="btn block" data-act="gym-find" ${gymBusy ? 'disabled' : ''}>${icon.camera} ${gymBusy ? 'Смотрю на фото…' : 'Сфоткать тренажёр'}</button>` : '<a class="btn block" href="#ai">Подключить DeepSeek</a>'}
-    <button class="btn ghost block" data-act="gym-manual">Добавить вручную</button></section>`;
-  const files = `<section class="card list">
-    <button class="item" data-act="gym-import"><span class="thumb" style="--g:var(--teal)">${icon.up}</span><span class="grow"><span class="title">Загрузить базу тренажёров</span><div class="sub">Файл .json: добавит тренажёры, твои настройки не тронет</div></span>${icon.chev}</button>
-    ${list.length ? `<button class="item" data-act="gym-export"><span class="thumb" style="--g:var(--blue)">${icon.copy}</span><span class="grow"><span class="title">Поделиться базой</span><div class="sub">Например, с другом из того же клуба</div></span>${icon.chev}</button>` : ''}</section>`;
-  const cards = list.length ? `<div class="section-title">Мои тренажёры · ${list.length}</div><div class="gym-grid">${list.map((m) => `<button class="gym-card" data-act="gym-open" data-id="${m.id}">
-      <span class="pic" style="--g:${GROUP_COLOR[m.group] || 'var(--accent)'}">${m.photo ? `<img src="${m.photo}" alt="">` : thumb(m.exercise)}</span>
-      <b>${esc(m.name)}</b><span class="small muted">${m.exercises?.length > 1 ? `${m.exercises.length} ${plural(m.exercises.length, 'упражнение', 'упражнения', 'упражнений')}` : esc(m.exercise !== m.name ? m.exercise : L.GROUPS[m.group])}${m.ddx ? ` · №${esc(m.ddx)}` : ''}</span>
-      ${m.settings ? `<span class="small set">${esc(m.settings)}</span>` : ''}</button>`).join('')}</div>`
-    : `<section class="card empty"><h2>Тренажёров пока нет</h2><p>Сфоткай тренажёр в своём клубе, сохрани название и настройки сиденья. В следующий раз приложение узнает его по фото и подставит прошлый вес.</p></section>`;
-  return { title: 'Мой зал', top: topBack('#diary', 'Мой зал'), html: `${hero}${cards}${files}` };
+  const q = ui.gymQ.trim().toLowerCase();
+  const groups = [...new Set(all.map((m) => m.group))].filter((g) => L.GROUPS[g]).sort((a, b) => Object.keys(L.GROUPS).indexOf(a) - Object.keys(L.GROUPS).indexOf(b));
+  const list = all.filter((m) => !ui.gymG || m.group === ui.gymG || m.exercises?.some((x) => x.group === ui.gymG)).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  const hay = (m) => [m.name, m.brand, m.exercise, ...(m.exercises || []).map((x) => `${x.name} ${x.muscle || ''}`)].join(' ').toLowerCase();
+  const tools = `<div class="gym-tools">
+    <button class="btn" data-act="${hasKey ? 'gym-find' : 'go'}" data-to="ai" ${gymBusy ? 'disabled' : ''}>${icon.camera} ${gymBusy ? 'Смотрю…' : 'Узнать по фото'}</button>
+    <button class="btn secondary" data-act="gym-manual">${icon.plus} Добавить</button></div>`;
+  const filter = all.length ? `<input class="search" id="gym-q" type="search" placeholder="Поиск: тренажёр, упражнение, мышца" value="${esc(ui.gymQ)}" autocomplete="off">
+    <div class="chips" style="margin-top:10px"><button class="chip ${ui.gymG ? '' : 'on'}" data-act="gym-group" data-g="">Все · ${all.length}</button>${groups.map((g) => `<button class="chip ${ui.gymG === g ? 'on' : ''}" data-act="gym-group" data-g="${g}">${L.GROUPS[g]}</button>`).join('')}</div>` : '';
+  const cards = list.length ? `<div class="gym-grid" id="gym-grid">${list.map((m) => `<button class="gym-card" data-act="gym-open" data-id="${m.id}" data-hay="${esc(hay(m))}" ${q && !hay(m).includes(q) ? 'hidden' : ''}>
+      <span class="pic" style="--g:${GROUP_COLOR[m.group] || 'var(--accent)'}">${m.photo ? `<img src="${m.photo}" alt="" loading="lazy">` : thumb(m.exercise)}</span>
+      <b>${esc(m.name)}</b><span class="small muted">${m.exercises?.length > 1 ? `${m.exercises.length} ${plural(m.exercises.length, 'упражнение', 'упражнения', 'упражнений')}` : esc(m.exercise !== m.name ? m.exercise : L.GROUPS[m.group])}${m.brand ? ` · ${esc(m.brand)}` : ''}</span>
+      ${m.settings ? `<span class="small set">${esc(m.settings)}</span>` : ''}</button>`).join('')}</div><p class="small muted" id="gym-none" ${q && !list.some((m) => hay(m).includes(q)) ? '' : 'hidden'} style="text-align:center">Ничего не нашлось</p>`
+    : all.length ? '<p class="small muted" style="text-align:center">В этой группе тренажёров нет</p>'
+    : `<section class="card empty"><h2>${gymSyncing ? 'Загружаю тренажёры…' : 'Тренажёры не загрузились'}</h2><p>${gymSyncing ? 'Это пара секунд.' : 'Нужен интернет. Проверь связь и попробуй ещё раз.'}</p>${gymSyncing ? '' : '<button class="btn" data-act="gym-sync">Загрузить ещё раз</button>'}</section>`;
+  const files = all.length ? `<div class="section-title">Ещё</div><section class="card list">
+    <button class="item" data-act="gym-export"><span class="thumb" style="--g:var(--blue)">${icon.copy}</span><span class="grow"><span class="title">Поделиться своими тренажёрами</span><div class="sub">С настройками сиденья</div></span>${icon.chev}</button>
+    <button class="item" data-act="gym-import"><span class="thumb" style="--g:var(--teal)">${icon.up}</span><span class="grow"><span class="title">Загрузить из файла</span><div class="sub">Если друг поделился своими</div></span>${icon.chev}</button></section>` : '';
+  return { title: 'Тренажёры', top: topTitle('Тренажёры', '', all.length ? `${all.length} ${plural(all.length, 'тренажёр', 'тренажёра', 'тренажёров')} в зале` : ''), html: `${tools}${filter}${cards}${files}` };
 }
 
 async function gymFind() {
@@ -1642,18 +1703,25 @@ function importMachines(file) {
 }
 
 // База тренажёров зала лежит рядом с сайтом и подтягивается сама при первом запуске и при её обновлении.
-async function syncGymBase() {
+let gymSyncing = false;
+async function syncGymBase(force = false) {
+  if (gymSyncing) return;
+  gymSyncing = true;
+  if (force && route().name === 'gym') render();
   try {
     const res = await fetch('./gym-base.json', { cache: 'no-cache' });
     if (!res.ok) return;
     const json = await res.json();
     const v = String(json.version || '');
-    if (!v || state.settings.gymBase === v) return;
+    if (!v || (state.settings.gymBase === v && machines().length && !force)) return;
     const r = applyMachines(json);
     state.settings.gymBase = v;
     save(); render();
-    if (r.added) toast(`База тренажёров: +${r.added}`);
-  } catch { /* базы нет или нет сети: попробуем в следующий раз */ }
+    if (r.added) toast(`Тренажёры: +${r.added}`);
+  } catch { if (force) toast('Не получилось загрузить, проверь интернет'); /* иначе попробуем в следующий раз */ } finally {
+    gymSyncing = false;
+    if (route().name === 'gym') render();
+  }
 }
 
 async function exportBackup() {
@@ -1716,6 +1784,10 @@ document.addEventListener('click', (ev) => {
     case 'measurement': measurementSheet(el.dataset.day); break;
     case 'new-workout': newWorkout(); break;
     case 'gym-find': gymFind(); break;
+    case 'gym-sync': syncGymBase(true); break;
+    case 'gym-group': ui.gymG = el.dataset.g; render(); break;
+    case 'cal-month': { const d = calBase(); d.setMonth(d.getMonth() + +el.dataset.d); ui.calMonth = d; render(); break; }
+    case 'cal-day': calDay(el.dataset.day); break;
     case 'gym-import': pickFile('application/json,.json', importMachines); break;
     case 'gym-export': shareFile(JSON.stringify(L.machinesFile(machines())), `moy-zal-${dayKey(new Date())}.json`, 'Мой зал'); break;
     case 'gym-manual': machineSheet({ name: '', exercise: '', group: 'other', settings: '', photo: null }, { isNew: true }); break;
@@ -1797,6 +1869,14 @@ document.addEventListener('click', (ev) => {
 document.addEventListener('input', (ev) => {
   const el = ev.target;
   if (el.id === 'ai-input') { aiState.draft = el.value; autoGrow(); return; }
+  if (el.id === 'gym-q') {
+    ui.gymQ = el.value;
+    const q = el.value.trim().toLowerCase();
+    let n = 0;
+    for (const c of document.querySelectorAll('#gym-grid .gym-card')) { const ok = !q || c.dataset.hay.includes(q); c.hidden = !ok; if (ok) n++; }
+    const none = $('#gym-none'); if (none) none.hidden = n > 0;
+    return;
+  }
   if (el.dataset.b && ui.draft) {
     const t = ui.draft.t;
     if (el.dataset.b === 'title') t.title = el.value.slice(0, 60);
