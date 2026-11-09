@@ -536,7 +536,10 @@ function setText(s, name, w) {
 
 // ───────── Мой зал: свои тренажёры с фото и настройками ─────────
 const machines = () => (state.machines ||= []);
-const machineFor = (exercise) => machines().find((x) => x.exercise.toLowerCase() === String(exercise).toLowerCase()) || null;
+const machineFor = (exercise) => {
+  const q = String(exercise).toLowerCase();
+  return machines().find((x) => x.exercise.toLowerCase() === q) || machines().find((x) => x.exercises?.some((e) => e.name.toLowerCase() === q)) || null;
+};
 let gymBusy = false;
 
 /** Последняя открытая тренировка за 12 часов или новая; упражнение добавляется, если его там нет. */
@@ -567,7 +570,7 @@ function viewGym() {
     ${list.length ? `<button class="item" data-act="gym-export"><span class="thumb" style="--g:var(--blue)">${icon.copy}</span><span class="grow"><span class="title">Поделиться базой</span><div class="sub">Например, с другом из того же клуба</div></span>${icon.chev}</button>` : ''}</section>`;
   const cards = list.length ? `<div class="section-title">Мои тренажёры · ${list.length}</div><div class="gym-grid">${list.map((m) => `<button class="gym-card" data-act="gym-open" data-id="${m.id}">
       <span class="pic" style="--g:${GROUP_COLOR[m.group] || 'var(--accent)'}">${m.photo ? `<img src="${m.photo}" alt="">` : thumb(m.exercise)}</span>
-      <b>${esc(m.name)}</b><span class="small muted">${esc(m.exercise !== m.name ? m.exercise : L.GROUPS[m.group])}</span>
+      <b>${esc(m.name)}</b><span class="small muted">${m.exercises?.length > 1 ? `${m.exercises.length} ${plural(m.exercises.length, 'упражнение', 'упражнения', 'упражнений')}` : esc(m.exercise !== m.name ? m.exercise : L.GROUPS[m.group])}${m.ddx ? ` · №${esc(m.ddx)}` : ''}</span>
       ${m.settings ? `<span class="small set">${esc(m.settings)}</span>` : ''}</button>`).join('')}</div>`
     : `<section class="card empty"><h2>Тренажёров пока нет</h2><p>Сфоткай тренажёр в своём клубе, сохрани название и настройки сиденья. В следующий раз приложение узнает его по фото и подставит прошлый вес.</p></section>`;
   return { title: 'Мой зал', top: topBack('#diary', 'Мой зал'), html: `${hero}${cards}${files}` };
@@ -610,7 +613,9 @@ function machineSheet(m, { isNew = false, found = false, tip = '' } = {}) {
     title: isNew ? 'Новый тренажёр' : m.name, left: 'Закрыть', right: 'Сохранить',
     body: `${found ? `<div class="gym-found">${icon.check} Это твой тренажёр</div>` : ''}
       ${m.photo ? `<img class="gym-photo" src="${m.photo}" alt="Фото тренажёра">` : ''}
+      ${m.about || m.brand || m.ddx ? `<p class="small" style="margin:0">${m.brand ? `<b>${esc(m.brand)}</b>${m.ddx ? ` · №${esc(m.ddx)} в DDX` : ''}<br>` : m.ddx ? `<b>№${esc(m.ddx)} в DDX</b><br>` : ''}${esc(m.about || '')}</p>` : ''}
       ${tip ? `<p class="small" style="margin:0"><b>Как настроить:</b> ${esc(tip)}</p>` : ''}
+      ${m.exercises?.length ? `<div class="section-caption" style="margin:4px 0 -4px">Упражнения</div><div class="card list m-exs">${m.exercises.map((x, i) => `<div class="item">${thumb(x.name)}<span class="grow"><span class="title">${esc(x.name)}</span><div class="sub">${esc(x.muscle || L.GROUPS[x.group])}${(() => { const r = lastResult(x.name); return r ? ` · ${esc(r)}` : ''; })()}</div></span><button class="icon-btn" data-m-ex="${i}" aria-label="Добавить в тренировку: ${esc(x.name)}">${icon.plus}</button></div>`).join('')}</div>` : ''}
       ${last ? `<p class="small muted" style="margin:0">Прошлый раз ${esc(last)}</p>` : ''}
       <div class="field"><label for="m-name">Название</label><input id="m-name" value="${esc(m.name)}" maxlength="60" placeholder="Например, жим ногами 45°"></div>
       <div class="field"><label for="m-ex">Упражнение</label><input id="m-ex" list="m-ex-list" value="${esc(m.exercise)}" maxlength="60"><datalist id="m-ex-list">${state.exercises.map((e) => `<option value="${esc(e.name)}">`).join('')}</datalist></div>
@@ -628,6 +633,13 @@ function machineSheet(m, { isNew = false, found = false, tip = '' } = {}) {
         const w = addToWorkout(saved.exercise, setsFromPrevious(saved.exercise, new Date().toISOString(), null));
         save(); closeSheet(); go(`w-${w.id}`);
       });
+      el.querySelectorAll('[data-m-ex]').forEach((b) => b.addEventListener('click', () => {
+        const x = m.exercises[+b.dataset.mEx];
+        if (state.demo) clearDemo(false);
+        const name = aiEnsureExercise({ name: x.name, group: x.group });
+        const w = addToWorkout(name, setsFromPrevious(name, new Date().toISOString(), null));
+        save(); closeSheet(); go(`w-${w.id}`);
+      }));
       el.querySelector('[data-m-del]')?.addEventListener('click', () => { state.machines = machines().filter((x) => x.id !== m.id); save(); closeSheet(); render(); toast('Тренажёр удалён'); });
     },
   });
@@ -1617,7 +1629,7 @@ function importMachines(file) {
     let r;
     try { r = L.mergeMachines(machines(), text); } catch (e) { toast(e.message); return; }
     state.machines = r.machines;
-    for (const m of r.machines) aiEnsureExercise({ name: m.exercise, group: m.group });
+    for (const m of r.machines) { aiEnsureExercise({ name: m.exercise, group: m.group }); for (const x of m.exercises || []) aiEnsureExercise(x); }
     save(); render();
     toast(`Добавлено ${r.added}, обновлено ${r.updated}`);
   });

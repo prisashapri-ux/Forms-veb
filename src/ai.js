@@ -117,7 +117,8 @@ export function machineRefs(machines) {
   if (!list.length) return [];
   const out = [{ type: 'text', text: `Мои сохранённые тренажёры («Мой зал»). Если на фото выше один из них, так и скажи («это твой …»), используй его упражнение и мои настройки:` }];
   list.forEach((x, i) => {
-    out.push({ type: 'text', text: `Тренажёр ${i + 1}: ${x.name}, упражнение «${x.exercise}»${x.settings ? `, мои настройки: ${x.settings}` : ''}` });
+    const exs = x.exercises?.length ? `, упражнения: ${x.exercises.map((e) => e.name).join('; ')}` : `, упражнение «${x.exercise}»`;
+    out.push({ type: 'text', text: `Тренажёр ${i + 1}: ${x.name}${x.brand ? ` (${x.brand})` : ''}${exs}${x.settings ? `, мои настройки: ${x.settings}` : ''}` });
     out.push({ type: 'image_url', image_url: { url: x.photo, detail: 'low' } });
   });
   return out;

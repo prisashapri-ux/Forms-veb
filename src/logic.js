@@ -504,6 +504,12 @@ export function cleanMachine(m) {
     exercise: String(m.exercise || name).replace(/\s+/g, ' ').trim().slice(0, 60) || name,
     group: GROUPS[m.group] ? m.group : 'other', settings: String(m.settings || '').trim().slice(0, 300),
     photo, created: Number.isFinite(m.created) ? m.created : Date.now(),
+    ...(m.about ? { about: String(m.about).trim().slice(0, 400) } : {}),
+    ...(m.brand ? { brand: String(m.brand).trim().slice(0, 40) } : {}),
+    ...(m.ddx ? { ddx: String(m.ddx).replace(/\D/g, '').slice(0, 6) } : {}),
+    ...(Array.isArray(m.exercises) && m.exercises.length ? { exercises: m.exercises.filter((x) => x && typeof x.name === 'string' && x.name.trim()).slice(0, 30).map((x) => ({
+      name: x.name.replace(/\s+/g, ' ').trim().slice(0, 80), muscle: String(x.muscle || '').trim().slice(0, 60), group: GROUPS[x.group] ? x.group : 'other',
+    })) } : {}),
   };
 }
 
@@ -524,7 +530,7 @@ export function mergeMachines(current, json) {
   for (const m of list) {
     const i = out.findIndex((x) => x.name.toLowerCase() === m.name.toLowerCase());
     if (i < 0) { out.push({ ...m, id: out.some((x) => x.id === m.id) ? uid() : m.id }); added++; continue; }
-    out[i] = { ...out[i], exercise: m.exercise, group: m.group, photo: m.photo || out[i].photo, settings: out[i].settings || m.settings };
+    out[i] = { ...out[i], ...m, id: out[i].id, photo: m.photo || out[i].photo, settings: out[i].settings || m.settings, created: out[i].created };
     updated++;
   }
   return { machines: out, added, updated };
