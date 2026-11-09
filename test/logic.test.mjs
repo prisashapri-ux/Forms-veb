@@ -242,3 +242,14 @@ test('Мой зал: тренажёры в копии, узнавание по �
   const old = A.buildMessages([{ role: 'user', text: 'Что это?', thumb: 'data:image/jpeg;base64,B' }], 'S', [], back.machines);
   assert.equal(old[1].content.length, 2);
 });
+
+test('база тренажёров сливается по названию и не трогает свои настройки', () => {
+  const cur = [{ id: 'a', name: 'Жим ногами', exercise: 'Жим ногами', group: 'legs', settings: 'Сиденье 4', photo: null, created: 1 }];
+  const file = L.machinesFile([{ id: 'a', name: 'жим ногами', exercise: 'Жим ногами', group: 'legs', settings: 'Сиденье 2', photo: 'data:image/jpeg;base64,AA', created: 2 }, { id: 'b', name: 'Баттерфляй', exercise: 'Сведение рук в тренажёре', group: 'chest', created: 3 }]);
+  const r = L.mergeMachines(cur, JSON.stringify(file));
+  assert.equal(r.added, 1); assert.equal(r.updated, 1);
+  assert.equal(r.machines[0].settings, 'Сиденье 4');
+  assert.equal(r.machines[0].photo, 'data:image/jpeg;base64,AA');
+  assert.equal(r.machines[1].name, 'Баттерфляй');
+  assert.throws(() => L.mergeMachines([], '{}'), /нет тренажёров/);
+});

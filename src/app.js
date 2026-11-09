@@ -562,12 +562,15 @@ function viewGym() {
     <p class="small muted">${hasKey ? 'ИИ сравнит фото с твоими тренажёрами. Если это новый, предложит название, упражнение и как его настроить.' : 'Для фото нужен ключ DeepSeek: подключи его во вкладке «ИИ». Без него тренажёры можно добавлять вручную.'}</p>
     ${hasKey ? `<button class="btn block" data-act="gym-find" ${gymBusy ? 'disabled' : ''}>${icon.camera} ${gymBusy ? 'Смотрю на фото…' : 'Сфоткать тренажёр'}</button>` : '<a class="btn block" href="#ai">Подключить DeepSeek</a>'}
     <button class="btn ghost block" data-act="gym-manual">Добавить вручную</button></section>`;
+  const files = `<section class="card list">
+    <button class="item" data-act="gym-import"><span class="thumb" style="--g:var(--teal)">${icon.up}</span><span class="grow"><span class="title">Загрузить базу тренажёров</span><div class="sub">Файл .json: добавит тренажёры, твои настройки не тронет</div></span>${icon.chev}</button>
+    ${list.length ? `<button class="item" data-act="gym-export"><span class="thumb" style="--g:var(--blue)">${icon.copy}</span><span class="grow"><span class="title">Поделиться базой</span><div class="sub">Например, с другом из того же клуба</div></span>${icon.chev}</button>` : ''}</section>`;
   const cards = list.length ? `<div class="section-title">Мои тренажёры · ${list.length}</div><div class="gym-grid">${list.map((m) => `<button class="gym-card" data-act="gym-open" data-id="${m.id}">
       <span class="pic" style="--g:${GROUP_COLOR[m.group] || 'var(--accent)'}">${m.photo ? `<img src="${m.photo}" alt="">` : thumb(m.exercise)}</span>
       <b>${esc(m.name)}</b><span class="small muted">${esc(m.exercise !== m.name ? m.exercise : L.GROUPS[m.group])}</span>
       ${m.settings ? `<span class="small set">${esc(m.settings)}</span>` : ''}</button>`).join('')}</div>`
     : `<section class="card empty"><h2>Тренажёров пока нет</h2><p>Сфоткай тренажёр в своём клубе, сохрани название и настройки сиденья. В следующий раз приложение узнает его по фото и подставит прошлый вес.</p></section>`;
-  return { title: 'Мой зал', top: topBack('#diary', 'Мой зал'), html: `${hero}${cards}` };
+  return { title: 'Мой зал', top: topBack('#diary', 'Мой зал'), html: `${hero}${cards}${files}` };
 }
 
 async function gymFind() {
@@ -1597,6 +1600,29 @@ function viewSettings() {
   };
 }
 
+async function shareFile(json, name, title) {
+  const file = new File([json], name, { type: 'application/json' });
+  try {
+    if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title }); return; }
+  } catch (e) { if (e?.name === 'AbortError') return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file); a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast('Файл сохранён в «Загрузки»');
+}
+
+function importMachines(file) {
+  file.text().then((text) => {
+    let r;
+    try { r = L.mergeMachines(machines(), text); } catch (e) { toast(e.message); return; }
+    state.machines = r.machines;
+    for (const m of r.machines) aiEnsureExercise({ name: m.exercise, group: m.group });
+    save(); render();
+    toast(`Добавлено ${r.added}, обновлено ${r.updated}`);
+  });
+}
+
 async function exportBackup() {
   const json = JSON.stringify(L.makeBackup(state), null, 2);
   const name = `forma-${dayKey(new Date())}.json`;
@@ -1657,6 +1683,8 @@ document.addEventListener('click', (ev) => {
     case 'measurement': measurementSheet(el.dataset.day); break;
     case 'new-workout': newWorkout(); break;
     case 'gym-find': gymFind(); break;
+    case 'gym-import': pickFile('application/json,.json', importMachines); break;
+    case 'gym-export': shareFile(JSON.stringify(L.machinesFile(machines())), `moy-zal-${dayKey(new Date())}.json`, 'Мой зал'); break;
     case 'gym-manual': machineSheet({ name: '', exercise: '', group: 'other', settings: '', photo: null }, { isNew: true }); break;
     case 'gym-open': { ev.preventDefault(); const m = machines().find((x) => x.id === el.dataset.id); if (m) machineSheet(m); break; }
     case 'repeat-last': {

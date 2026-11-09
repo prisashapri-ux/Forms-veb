@@ -507,6 +507,29 @@ export function cleanMachine(m) {
   };
 }
 
+/** Файл базы тренажёров: только «Мой зал», без тренировок и замеров. */
+export const machinesFile = (machines) => ({ format: 'forma-machines', version: 1, machines: machines.map(cleanMachine).filter(Boolean) });
+
+/**
+ * Слияние базы с текущим залом по названию: новые добавляются, у совпавших обновляются фото и упражнение,
+ * а свои непустые настройки сохраняются. Возвращает { machines, added, updated }.
+ */
+export function mergeMachines(current, json) {
+  let f;
+  try { f = typeof json === 'string' ? JSON.parse(json) : json; } catch { throw new Error('Файл не читается: это не JSON.'); }
+  const list = Array.isArray(f?.machines) ? f.machines.map(cleanMachine).filter(Boolean).slice(0, 200) : null;
+  if (!list) throw new Error('В файле нет тренажёров.');
+  const out = current.map((m) => ({ ...m }));
+  let added = 0, updated = 0;
+  for (const m of list) {
+    const i = out.findIndex((x) => x.name.toLowerCase() === m.name.toLowerCase());
+    if (i < 0) { out.push({ ...m, id: out.some((x) => x.id === m.id) ? uid() : m.id }); added++; continue; }
+    out[i] = { ...out[i], exercise: m.exercise, group: m.group, photo: m.photo || out[i].photo, settings: out[i].settings || m.settings };
+    updated++;
+  }
+  return { machines: out, added, updated };
+}
+
 function clean(o) {
   const r = {};
   for (const [k, v] of Object.entries(o)) if (v !== undefined && v !== null) r[k] = v;
