@@ -1625,15 +1625,35 @@ async function shareFile(json, name, title) {
   toast('Файл сохранён в «Загрузки»');
 }
 
+function applyMachines(json) {
+  const r = L.mergeMachines(machines(), json);
+  state.machines = r.machines;
+  for (const m of r.machines) { aiEnsureExercise({ name: m.exercise, group: m.group }); for (const x of m.exercises || []) aiEnsureExercise(x); }
+  return r;
+}
+
 function importMachines(file) {
   file.text().then((text) => {
     let r;
-    try { r = L.mergeMachines(machines(), text); } catch (e) { toast(e.message); return; }
-    state.machines = r.machines;
-    for (const m of r.machines) { aiEnsureExercise({ name: m.exercise, group: m.group }); for (const x of m.exercises || []) aiEnsureExercise(x); }
+    try { r = applyMachines(text); } catch (e) { toast(e.message); return; }
     save(); render();
     toast(`Добавлено ${r.added}, обновлено ${r.updated}`);
   });
+}
+
+// База тренажёров зала лежит рядом с сайтом и подтягивается сама при первом запуске и при её обновлении.
+async function syncGymBase() {
+  try {
+    const res = await fetch('./gym-base.json', { cache: 'no-cache' });
+    if (!res.ok) return;
+    const json = await res.json();
+    const v = String(json.version || '');
+    if (!v || state.settings.gymBase === v) return;
+    const r = applyMachines(json);
+    state.settings.gymBase = v;
+    save(); render();
+    if (r.added) toast(`База тренажёров: +${r.added}`);
+  } catch { /* базы нет или нет сети: попробуем в следующий раз */ }
 }
 
 async function exportBackup() {
@@ -1832,6 +1852,7 @@ async function start() {
   render(true);
   window.__formaBooted = true;
   persist();
+  syncGymBase();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     // Новая версия сайта ставится в фоне; как только она взяла управление, перезагружаемся один раз.
     const hadController = !!navigator.serviceWorker.controller;
