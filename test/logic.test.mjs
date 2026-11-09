@@ -223,3 +223,22 @@ test('табло кардио по фото: разбор и запрос', asyn
   assert.deepEqual(body.response_format, { type: 'json_object' });
   assert.equal(body.messages[1].content[1].image_url.url, 'data:image/jpeg;base64,X');
 });
+
+test('Мой зал: тренажёры в копии, узнавание по фото', async () => {
+  const A = await import('../src/ai.js');
+  const s = L.emptyState();
+  s.machines = [{ id: 'm1', name: 'Жим ногами 45°', exercise: 'Жим ногами', group: 'legs', settings: 'Сиденье 4', photo: 'data:image/jpeg;base64,AAAA', created: 1 }, { name: '' }];
+  const back = L.readBackup(JSON.parse(JSON.stringify(L.makeBackup(s))));
+  assert.deepEqual(back.machines, [{ id: 'm1', name: 'Жим ногами 45°', exercise: 'Жим ногами', group: 'legs', settings: 'Сиденье 4', photo: 'data:image/jpeg;base64,AAAA', created: 1 }]);
+  assert.equal(L.cleanMachine({ name: 'X', photo: 'javascript:alert(1)' }).photo, null);
+  assert.deepEqual(A.parseMachine('{"ok":true,"match":2,"name":"Тяга","exercise":"Тяга верхнего блока","group":"back","tip":"Валик на бёдра"}', 2), { match: 1, name: 'Тяга', exercise: 'Тяга верхнего блока', group: 'back', tip: 'Валик на бёдра' });
+  assert.equal(A.parseMachine('{"ok":true,"match":5,"name":"Тяга"}', 2).match, null);
+  assert.throws(() => A.parseMachine('{"ok":false,"note":"это стул"}', 0), /это стул/);
+  const refs = A.machineRefs(back.machines);
+  assert.equal(refs.length, 3);
+  assert.match(refs[1].text, /Сиденье 4/);
+  const msgs = A.buildMessages([{ role: 'user', text: 'Что это?', image: 'data:image/jpeg;base64,B' }], 'S', [], back.machines);
+  assert.equal(msgs[1].content.length, 5);
+  const old = A.buildMessages([{ role: 'user', text: 'Что это?', thumb: 'data:image/jpeg;base64,B' }], 'S', [], back.machines);
+  assert.equal(old[1].content.length, 2);
+});

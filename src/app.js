@@ -150,12 +150,12 @@ const go = (hash) => { location.hash = hash; };
 addEventListener('hashchange', () => { closeSheet(); render(true); });
 
 const TABS = [['body', 'Тело', icon.body, 'var(--purple)'], ['diary', 'Дневник', icon.diary, 'var(--orange)'], ['home', 'Дома', icon.home, 'var(--pink)'], ['ai', 'ИИ', icon.spark, 'var(--indigo)'], ['analytics', 'Анализ', icon.chart, 'var(--blue)'], ['food', 'Питание', icon.food, 'var(--green)']];
-const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', build: 'diary', advisor: 'analytics', ai: 'ai', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
+const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', build: 'diary', gym: 'diary', advisor: 'analytics', ai: 'ai', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
 const TAB_TITLE = { body: 'Тело', diary: 'Дневник', home: 'Дома', ai: 'ИИ', analytics: 'Аналитика', food: 'Питание' };
 
 function render(scrollTop = false) {
   const r = route();
-  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, advisor: viewAdvisor, ai: viewAI, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
+  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, gym: viewGym, advisor: viewAdvisor, ai: viewAI, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
   const v = (views[r.name] || viewBody)(r.arg);
   if (r.name === 'settings' && r.arg === 'ai') setTimeout(() => { $('#ai-settings')?.scrollIntoView({ block: 'start' }); $('#ai-key')?.focus(); }, 0);
   const y = scrollY;
@@ -497,6 +497,7 @@ function viewDiary() {
   const actions = `<section class="card list">
     <button class="item" data-act="new-workout"><span class="thumb" style="--g:var(--orange)">${icon.plus}</span><span class="grow title">Пустая тренировка</span>${icon.chev}</button>
     ${ws[0] ? `<button class="item" data-act="repeat-last"><span class="thumb" style="--g:var(--blue)">${icon.repeat}</span><span class="grow"><span class="title">Повторить последнюю</span><div class="sub">${esc(ws[0].title)}</div></span>${icon.chev}</button>` : ''}
+    <a class="item" href="#gym"><span class="thumb" style="--g:var(--teal)">${icon.camera}</span><span class="grow"><span class="title">Мой зал</span><div class="sub">${machines().length ? `${machines().length} ${plural(machines().length, 'тренажёр', 'тренажёра', 'тренажёров')} · узнать по фото` : 'Сфоткай тренажёр, приложение его запомнит'}</div></span>${icon.chev}</a>
     <a class="item" href="#home"><span class="thumb" style="--g:var(--pink)">${icon.home}</span><span class="grow title">Тренировка дома</span>${icon.chev}</a>
     <a class="item" href="#programs"><span class="thumb" style="--g:var(--purple)">${icon.list}</span><span class="grow"><span class="title">Программы</span>${program ? `<div class="sub">${esc(program.title)}</div>` : ''}</span>${icon.chev}</a>
   </section>`;
@@ -531,6 +532,117 @@ function setText(s, name, w) {
   if (isHomeWorkout(w)) return `${s.reps} с`;
   if (groupOf(name) !== 'cardio') return `${num(s.weight, 2)}×${s.reps}`;
   return [s.weight ? `${num(s.weight, 2)} мин` : '', s.reps ? `${s.reps} км` : '', s.level ? `ур. ${num(s.level, 1)}` : ''].filter(Boolean).join(' · ') || '—';
+}
+
+// ───────── Мой зал: свои тренажёры с фото и настройками ─────────
+const machines = () => (state.machines ||= []);
+const machineFor = (exercise) => machines().find((x) => x.exercise.toLowerCase() === String(exercise).toLowerCase()) || null;
+let gymBusy = false;
+
+/** Последняя открытая тренировка за 12 часов или новая; упражнение добавляется, если его там нет. */
+function addToWorkout(name, sets) {
+  let w = [...state.workouts].reverse().find((q) => !q.finishedAt && Date.now() - new Date(q.date) < 12 * 3600000);
+  if (!w) { w = { id: L.uid(), date: new Date().toISOString(), title: 'Тренировка', note: '', durationMinutes: null, programID: null, programDay: null, finishedAt: null, exercises: [] }; state.workouts.push(w); }
+  if (!w.exercises.some((e) => e.name === name)) w.exercises.push({ name, sets });
+  return w;
+}
+
+function lastResult(name) {
+  const prev = L.previousEntry(state.workouts, name, new Date(Date.now() + 864e5).toISOString(), null);
+  if (!prev) return '';
+  const sets = L.workingSets(prev.e);
+  return sets.length ? `${fmtDay(prev.w.date, false)}: ${sets.map((q) => setText(q, name, prev.w)).join(', ')}` : '';
+}
+
+function viewGym() {
+  const list = [...machines()].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  const hasKey = !!AI.getKey();
+  const hero = `<section class="card gym-hero"><span class="ai-logo">${icon.camera}</span>
+    <h2>Узнать тренажёр по фото</h2>
+    <p class="small muted">${hasKey ? 'ИИ сравнит фото с твоими тренажёрами. Если это новый, предложит название, упражнение и как его настроить.' : 'Для фото нужен ключ DeepSeek: подключи его во вкладке «ИИ». Без него тренажёры можно добавлять вручную.'}</p>
+    ${hasKey ? `<button class="btn block" data-act="gym-find" ${gymBusy ? 'disabled' : ''}>${icon.camera} ${gymBusy ? 'Смотрю на фото…' : 'Сфоткать тренажёр'}</button>` : '<a class="btn block" href="#ai">Подключить DeepSeek</a>'}
+    <button class="btn ghost block" data-act="gym-manual">Добавить вручную</button></section>`;
+  const cards = list.length ? `<div class="section-title">Мои тренажёры · ${list.length}</div><div class="gym-grid">${list.map((m) => `<button class="gym-card" data-act="gym-open" data-id="${m.id}">
+      <span class="pic" style="--g:${GROUP_COLOR[m.group] || 'var(--accent)'}">${m.photo ? `<img src="${m.photo}" alt="">` : thumb(m.exercise)}</span>
+      <b>${esc(m.name)}</b><span class="small muted">${esc(m.exercise !== m.name ? m.exercise : L.GROUPS[m.group])}</span>
+      ${m.settings ? `<span class="small set">${esc(m.settings)}</span>` : ''}</button>`).join('')}</div>`
+    : `<section class="card empty"><h2>Тренажёров пока нет</h2><p>Сфоткай тренажёр в своём клубе, сохрани название и настройки сиденья. В следующий раз приложение узнает его по фото и подставит прошлый вес.</p></section>`;
+  return { title: 'Мой зал', top: topBack('#diary', 'Мой зал'), html: `${hero}${cards}` };
+}
+
+async function gymFind() {
+  pickFile('image/*', async (f) => {
+    gymBusy = true; if (route().name === 'gym') render();
+    try {
+      const { image, thumb: small } = await aiPhotoFrom(f);
+      const photo = await shrinkPhoto(image, 360);
+      const refs = machines().filter((x) => x.photo).slice(0, 20);
+      const r = await AI.identifyMachine(image, refs, state.exercises.map((e) => e.name));
+      void small;
+      if (r.match != null) { machineSheet(refs[r.match], { found: true }); return; }
+      const ex = state.exercises.find((e) => e.name.toLowerCase() === r.exercise.toLowerCase());
+      machineSheet({ name: r.name, exercise: ex ? ex.name : r.exercise, group: ex ? ex.group : r.group, settings: '', photo }, { isNew: true, tip: r.tip });
+    } catch (e) {
+      toast(e.message || 'Не получилось узнать тренажёр');
+    } finally {
+      gymBusy = false; if (route().name === 'gym') render();
+    }
+  });
+}
+
+/** Уменьшает data URL до max px по длинной стороне (для хранения в «Моём зале»). */
+async function shrinkPhoto(url, max) {
+  const img = await new Promise((ok, fail) => { const im = new Image(); im.onload = () => ok(im); im.onerror = fail; im.src = url; });
+  const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.7);
+}
+
+function machineSheet(m, { isNew = false, found = false, tip = '' } = {}) {
+  const last = !isNew ? lastResult(m.exercise) : '';
+  const groups = Object.entries(L.GROUPS).map(([k, t]) => `<option value="${k}" ${m.group === k ? 'selected' : ''}>${t}</option>`).join('');
+  openSheet({
+    title: isNew ? 'Новый тренажёр' : m.name, left: 'Закрыть', right: 'Сохранить',
+    body: `${found ? `<div class="gym-found">${icon.check} Это твой тренажёр</div>` : ''}
+      ${m.photo ? `<img class="gym-photo" src="${m.photo}" alt="Фото тренажёра">` : ''}
+      ${tip ? `<p class="small" style="margin:0"><b>Как настроить:</b> ${esc(tip)}</p>` : ''}
+      ${last ? `<p class="small muted" style="margin:0">Прошлый раз ${esc(last)}</p>` : ''}
+      <div class="field"><label for="m-name">Название</label><input id="m-name" value="${esc(m.name)}" maxlength="60" placeholder="Например, жим ногами 45°"></div>
+      <div class="field"><label for="m-ex">Упражнение</label><input id="m-ex" list="m-ex-list" value="${esc(m.exercise)}" maxlength="60"><datalist id="m-ex-list">${state.exercises.map((e) => `<option value="${esc(e.name)}">`).join('')}</datalist></div>
+      <div class="field"><label for="m-group">Мышцы</label><select id="m-group">${groups}</select></div>
+      <div class="field"><label for="m-set">Мои настройки</label><textarea id="m-set" rows="2" maxlength="300" placeholder="Сиденье 4, спинка 2, валик на 3-й дырке">${esc(m.settings || '')}</textarea></div>
+      <button class="btn block" data-m-workout>${icon.plus} В тренировку</button>
+      ${isNew ? '' : '<button class="btn danger block" data-m-del>Удалить тренажёр</button>'}`,
+    onRight: (el) => { if (saveMachine(el, m, isNew)) { closeSheet(); render(); toast(isNew ? 'Тренажёр сохранён' : 'Сохранено'); } },
+    onOpen: (el) => {
+      el.querySelector('#m-ex').addEventListener('change', (e) => { const ex = state.exercises.find((x) => x.name === e.target.value); if (ex) el.querySelector('#m-group').value = ex.group; });
+      el.querySelector('[data-m-workout]').addEventListener('click', () => {
+        const saved = saveMachine(el, m, isNew);
+        if (!saved) return;
+        if (state.demo) clearDemo(false);
+        const w = addToWorkout(saved.exercise, setsFromPrevious(saved.exercise, new Date().toISOString(), null));
+        save(); closeSheet(); go(`w-${w.id}`);
+      });
+      el.querySelector('[data-m-del]')?.addEventListener('click', () => { state.machines = machines().filter((x) => x.id !== m.id); save(); closeSheet(); render(); toast('Тренажёр удалён'); });
+    },
+  });
+}
+
+/** Сохраняет форму тренажёра; упражнение заводится в списке, если его не было. */
+function saveMachine(el, m, isNew) {
+  const name = el.querySelector('#m-name').value.trim();
+  if (!name) { toast('Напиши название'); el.querySelector('#m-name').focus(); return null; }
+  const exName = el.querySelector('#m-ex').value.trim() || name;
+  const group = el.querySelector('#m-group').value;
+  const clean = L.cleanMachine({ ...m, id: isNew ? L.uid() : m.id, name, exercise: exName, group, settings: el.querySelector('#m-set').value, created: m.created || Date.now() });
+  const finalEx = aiEnsureExercise({ name: clean.exercise, group: clean.group });
+  clean.exercise = finalEx;
+  if (isNew) machines().push(clean); else { const i = machines().findIndex((x) => x.id === m.id); if (i >= 0) machines()[i] = clean; else machines().push(clean); }
+  Object.assign(m, clean);
+  save();
+  return clean;
 }
 
 let cardioBusy = null;
@@ -599,6 +711,7 @@ function viewWorkout(id) {
         <button class="name" data-act="exercise-info" data-name="${esc(e.name)}">${esc(e.name)}<small>${L.GROUPS[g]}${range ? ` · цель ${range[0]}–${range[1]} повт.` : ''}${note ? ` · ${esc(note)}` : ''}</small></button>
         <button class="icon-btn" data-act="ex-menu" data-e="${ei}" aria-label="Действия с упражнением">${icon.more}</button></div>
       <div class="ex-meta">${esc(prevText)}</div>
+      ${(() => { const mm = machineFor(e.name); return mm ? `<button class="my-machine" data-act="gym-open" data-id="${mm.id}">${mm.photo ? `<img src="${mm.photo}" alt="">` : icon.camera}<span class="grow"><b>${esc(mm.name)}</b>${mm.settings ? `<span class="muted"> · ${esc(mm.settings)}</span>` : ''}</span>${icon.chev}</button>` : ''; })()}
       ${sug ? `<div class="hint"><div class="grow">Сегодня: <b>${esc(sug.headline)}</b><br><span class="muted small">${esc(sug.reason)}</span></div><button class="btn small secondary" data-act="apply-sug" data-e="${ei}">Подставить</button></div>` : ''}
       <div class="sets ${isCardio ? 'cardio' : ''}"><div class="set-row head"><span>№</span><span>${isCardio ? 'мин' : 'кг'}</span><span>${isCardio ? 'км' : timed ? 'сек' : 'повт'}</span>${isCardio ? '<span>уровень</span>' : ''}<span></span><span></span></div>${rows}</div>
       ${isCardio ? `<div class="cardio-btns"><button class="btn ghost" data-act="add-set" data-e="${ei}">${icon.plus} Подход</button>
@@ -1151,11 +1264,16 @@ function viewAI() {
 function aiExCard(x, m, i, k) {
   const known = state.exercises.some((e) => e.name.toLowerCase() === x.name.toLowerCase());
   const wid = m.added?.[x.name];
+  const mine = machineFor(x.name);
+  const um = aiCurrent()?.msgs[i - 1];
+  const hadPhoto = !!(um && (um.image || um.thumb));
   const w = wid && state.workouts.find((q) => q.id === wid);
   const reps = x.reps[0] === x.reps[1] ? x.reps[0] : `${x.reps[0]}–${x.reps[1]}`;
   return `<div class="ai-ex" style="--g:${GROUP_COLOR[x.group] || 'var(--accent)'}"><div class="head">${thumb(x.name)}<span class="grow"><b>${esc(x.name)}</b><div class="small muted">${esc(L.GROUPS[x.group])} · ${x.sets}×${reps}${x.weight ? ` · ${num(x.weight, 1)} кг` : ''}</div></span></div>
     <div class="btns">${w ? `<a class="btn small" href="#w-${w.id}">${icon.check} Открыть тренировку</a>` : `<button class="btn small" data-act="ai-ex-workout" data-i="${i}" data-k="${k}">${icon.plus} В тренировку</button>`}
-      ${known ? '<span class="small muted">Есть в списке упражнений</span>' : `<button class="btn small ghost" data-act="ai-ex-add" data-i="${i}" data-k="${k}">В мои упражнения</button>`}</div></div>`;
+      ${known ? '' : `<button class="btn small ghost" data-act="ai-ex-add" data-i="${i}" data-k="${k}">В мои упражнения</button>`}
+      ${mine ? '' : hadPhoto ? `<button class="btn small ghost" data-act="ai-ex-gym" data-i="${i}" data-k="${k}">${icon.camera} В Мой зал</button>` : ''}</div>
+    ${mine ? `<button class="my-machine" data-act="gym-open" data-id="${mine.id}">${mine.photo ? `<img src="${mine.photo}" alt="">` : icon.camera}<span class="grow"><b>Твой: ${esc(mine.name)}</b>${mine.settings ? `<span class="muted"> · ${esc(mine.settings)}</span>` : ''}</span>${icon.chev}</button>` : ''}</div>`;
 }
 
 function aiExFrom(el) {
@@ -1230,7 +1348,7 @@ async function aiRun(chat) {
   const model = AI.getMode();
   try {
     const names = state.exercises.map((e) => e.name);
-    const answer = await AI.ask(chat.msgs.filter((m) => !m.error).map(({ role, text, image, thumb }) => ({ role, text, image, thumb })), aiSummaryNow(), fetch, names);
+    const answer = await AI.ask(chat.msgs.filter((m) => !m.error).map(({ role, text, image, thumb }) => ({ role, text, image, thumb })), aiSummaryNow(), fetch, names, machines());
     chat.msgs.push({ role: 'assistant', text: answer, model });
   } catch (e) {
     chat.msgs.push({ role: 'assistant', text: e.message, error: true });
@@ -1266,12 +1384,17 @@ function aiAct(act, el) {
     const wasDemo = state.demo;
     if (wasDemo) clearDemo(false);
     const name = aiEnsureExercise(r.x);
-    let w = [...state.workouts].reverse().find((q) => !q.finishedAt && Date.now() - new Date(q.date) < 12 * 3600000);
-    if (!w) { w = { id: L.uid(), date: new Date().toISOString(), title: 'Тренировка', note: '', durationMinutes: null, programID: null, programDay: null, finishedAt: null, exercises: [] }; state.workouts.push(w); }
-    if (!w.exercises.some((e) => e.name === name)) w.exercises.push({ name, sets: Array.from({ length: r.x.sets }, () => ({ weight: r.x.weight, reps: r.x.reps[0], isWarmup: false, isDone: false })) });
+    const w = addToWorkout(name, Array.from({ length: r.x.sets }, () => ({ weight: r.x.weight, reps: r.x.reps[0], isWarmup: false, isDone: false })));
     r.m.added = { ...r.m.added, [r.x.name]: w.id };
     save(); AI.saveChats(aiChats()); render();
     if (!wasDemo) toast('Добавлено в тренировку');
+  }
+  else if (act === 'ai-ex-gym') {
+    const r = aiExFrom(el);
+    const prevMsg = aiCurrent()?.msgs[+el.dataset.i - 1];
+    if (!r) return;
+    const name = aiEnsureExercise(r.x);
+    machineSheet({ name: r.x.name, exercise: name, group: r.x.group, settings: '', photo: prevMsg?.thumb || null }, { isNew: true });
   }
   else if (act === 'ai-copy') { const m = aiCurrent()?.msgs[+el.dataset.i]; if (m) navigator.clipboard?.writeText(AI.parseExercises(m.text).text).then(() => toast('Скопировано'), () => toast('Не получилось скопировать')); }
   else if (act === 'ai-retry') { const c = aiCurrent(); if (c && c.msgs.at(-1)?.error) { c.msgs.pop(); aiRun(c); } }
@@ -1533,6 +1656,9 @@ document.addEventListener('click', (ev) => {
     case 'seg-mode': ui.segMode = el.dataset.m; render(); break;
     case 'measurement': measurementSheet(el.dataset.day); break;
     case 'new-workout': newWorkout(); break;
+    case 'gym-find': gymFind(); break;
+    case 'gym-manual': machineSheet({ name: '', exercise: '', group: 'other', settings: '', photo: null }, { isNew: true }); break;
+    case 'gym-open': { ev.preventDefault(); const m = machines().find((x) => x.id === el.dataset.id); if (m) machineSheet(m); break; }
     case 'repeat-last': {
       const last = workoutsSorted()[0];
       if (state.demo) clearDemo(false);
@@ -1591,7 +1717,7 @@ document.addEventListener('click', (ev) => {
     case 'play': startPlayer(el.dataset.id); break;
     case 'tpl-start': startTemplate(el.dataset.id); break;
     case 'ai-send': case 'ai-suggest': case 'ai-new': case 'ai-history': case 'ai-think': case 'ai-copy': case 'ai-retry':
-    case 'ai-photo': case 'ai-photo-x': case 'ai-ex-add': case 'ai-ex-workout':
+    case 'ai-photo': case 'ai-photo-x': case 'ai-ex-add': case 'ai-ex-workout': case 'ai-ex-gym':
       ev.preventDefault(); aiAct(act, el); break;
     case 'ai-model': AI.setMode(el.dataset.m); render(); break;
     case 'ai-save': {

@@ -438,6 +438,7 @@ export function emptyState() {
     workouts: [],
     food: [],
     templates: [],
+    machines: [],
     settings: { activeProgram: null, nutritionGoal: null, restSeconds: 120 },
   };
 }
@@ -471,6 +472,7 @@ export function makeBackup(state) {
     food: [...state.food].sort((a, b) => (a.date < b.date ? -1 : 1)).map((f) => ({ date: iso(f.date), title: f.title, protein: f.protein, kcal: f.kcal })),
     // Свои тренировки из конструктора. iOS-приложение незнакомые поля пропускает.
     ...(state.templates?.length ? { templates: state.templates.map(cleanTemplate).filter(Boolean) } : {}),
+    ...(state.machines?.length ? { machines: state.machines.map(cleanMachine).filter(Boolean) } : {}),
   };
 }
 
@@ -489,6 +491,20 @@ export function cleanTemplate(t) {
     return { exercise: x.exercise.slice(0, 80), sets: int(x.sets, 1, 10, 3), reps: [Math.min(lo, hi), Math.max(lo, hi)] };
   });
   return { id, kind: 'gym', title, items };
+}
+
+/** Тренажёр из «Моего зала»: фото-миниатюра, упражнение и свои настройки (сиденье, валик). */
+export function cleanMachine(m) {
+  if (!m || typeof m !== 'object') return null;
+  const name = String(m.name || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!name) return null;
+  const photo = typeof m.photo === 'string' && /^data:image\/(jpeg|png|webp);base64,[\w+/=]+$/.test(m.photo) && m.photo.length < 300000 ? m.photo : null;
+  return {
+    id: typeof m.id === 'string' && /^[\w-]{1,40}$/.test(m.id) ? m.id : uid(), name,
+    exercise: String(m.exercise || name).replace(/\s+/g, ' ').trim().slice(0, 60) || name,
+    group: GROUPS[m.group] ? m.group : 'other', settings: String(m.settings || '').trim().slice(0, 300),
+    photo, created: Number.isFinite(m.created) ? m.created : Date.now(),
+  };
 }
 
 function clean(o) {
@@ -552,6 +568,7 @@ export function readBackup(json) {
     state.food.push({ id: uid(), date: d.toISOString(), title: String(x.title || 'Еда'), protein: x.protein, kcal: x.kcal });
   }
   state.templates = Array.isArray(f.templates) ? f.templates.map(cleanTemplate).filter(Boolean) : [];
+  state.machines = Array.isArray(f.machines) ? f.machines.map(cleanMachine).filter(Boolean).slice(0, 200) : [];
   return state;
 }
 

@@ -99,13 +99,28 @@ export function aiSummary(sessions, body, tips, profile = {}, now = new Date()) 
  * Сообщения для API: первый вопрос уходит вместе со сводкой. Фото (m.image или уменьшенная m.thumb)
  * прикладывается к сообщению пользователя по формату OpenAI: [{type:'text'}, {type:'image_url'}].
  */
-export function buildMessages(history, summary, exerciseNames = []) {
+export function buildMessages(history, summary, exerciseNames = [], machines = []) {
   const system = exerciseNames.length ? `${SYSTEM_PROMPT}\n\nУпражнения в приложении: ${exerciseNames.join(', ')}.` : SYSTEM_PROMPT;
   return [{ role: 'system', content: system }, ...history.map((m, i) => {
     const text = i === 0 && m.role === 'user' ? `Мои данные:\n${summary}\n\nВопрос: ${m.text}` : m.text;
     const img = m.role === 'user' ? m.image || m.thumb : null;
-    return img ? { role: 'user', content: [{ type: 'text', text }, { type: 'image_url', image_url: { url: img, detail: m.image ? 'high' : 'low' } }] } : { role: m.role, content: text };
+    if (!img) return { role: m.role, content: text };
+    // К свежему фото прикладываются тренажёры из «Моего зала», чтобы ИИ узнал свой.
+    const refs = m.image ? machineRefs(machines) : [];
+    return { role: 'user', content: [{ type: 'text', text }, { type: 'image_url', image_url: { url: img, detail: m.image ? 'high' : 'low' } }, ...refs] };
   })];
+}
+
+/** Сохранённые тренажёры для сравнения: подпись и маленькое фото каждого, не больше 20. */
+export function machineRefs(machines) {
+  const list = machines.filter((x) => x.photo).slice(0, 20);
+  if (!list.length) return [];
+  const out = [{ type: 'text', text: `Мои сохранённые тренажёры («Мой зал»). Если на фото выше один из них, так и скажи («это твой …»), используй его упражнение и мои настройки:` }];
+  list.forEach((x, i) => {
+    out.push({ type: 'text', text: `Тренажёр ${i + 1}: ${x.name}, упражнение «${x.exercise}»${x.settings ? `, мои настройки: ${x.settings}` : ''}` });
+    out.push({ type: 'image_url', image_url: { url: x.photo, detail: 'low' } });
+  });
+  return out;
 }
 
 const ERR = {
@@ -133,13 +148,13 @@ async function post(fetchFn, key, body) {
  * Вопрос к DeepSeek. Если аккаунту недоступна deepseek-flash, один раз повторяет на старой
  * deepseek-chat: она без фото, поэтому снимки заменяются пометкой.
  */
-export async function ask(history, summary, fetchFn = fetch, exerciseNames = []) {
+export async function ask(history, summary, fetchFn = fetch, exerciseNames = [], machines = []) {
   const key = getKey();
   if (!key) throw new Error('Добавь ключ DeepSeek в настройках.');
   const think = isThinking();
   let { res, json } = await post(fetchFn, key, {
     model: API_MODEL, thinking: { type: think ? 'enabled' : 'disabled' },
-    max_tokens: think ? 8000 : 2000, messages: buildMessages(history, summary, exerciseNames),
+    max_tokens: think ? 8000 : 2000, messages: buildMessages(history, summary, exerciseNames, machines),
   });
   const modelErr = !res.ok && [400, 404, 422].includes(res.status) && /model/i.test(String(json?.error?.message || ''));
   if (modelErr) {
@@ -239,4 +254,42 @@ export async function readCardioDisplay(image, exercise, fetchFn = fetch) {
     throw new Error(`${ERR[res.status] || `Ошибка ${res.status}.`}${json?.error?.message ? ` (${String(json.error.message).slice(0, 160)})` : ''}`);
   }
   return parseDisplay(json?.choices?.[0]?.message?.content || '');
+}
+
+// ───────── «Мой зал»: узнать тренажёр по фото ─────────
+const MACHINE_PROMPT = `Ты узнаёшь тренажёры в спортзале по фото. Тебе дают новое фото и, возможно, список уже сохранённых тренажёров пользователя с их фото.
+Ответь только JSON: {"ok":true,"match":номер сохранённого тренажёра или null,"name":"короткое название тренажёра по-русски","exercise":"основное упражнение на нём","group":"chest|back|legs|glutes|shoulders|biceps|triceps|core|cardio|other","tip":"одна фраза: как настроить под себя"}.
+match ставь, только если это явно тот же тренажёр (та же модель и вид), а не просто похожий тип. Если упражнение есть в списке приложения, бери название оттуда дословно.
+Если на фото не тренажёр и не снаряд, верни {"ok":false,"note":"почему"}.`;
+
+/** Разбирает ответ про тренажёр. match приводится к индексу массива сохранённых (с нуля) или null. */
+export function parseMachine(text, count) {
+  let o;
+  try { o = JSON.parse(String(text).replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new Error('ИИ ответил непонятно. Попробуй сфотографировать ещё раз.'); }
+  if (!o || o.ok === false) throw new Error(`Не получилось узнать тренажёр${o?.note ? `: ${String(o.note).slice(0, 140)}` : '.'}`);
+  const n = Number(o.match);
+  const name = String(o.name || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  return {
+    match: Number.isInteger(n) && n >= 1 && n <= count ? n - 1 : null,
+    name: name || 'Тренажёр', exercise: String(o.exercise || name || '').replace(/\s+/g, ' ').trim().slice(0, 60) || name || 'Тренажёр',
+    group: Object.hasOwn(GROUPS, o.group) ? o.group : 'other', tip: String(o.tip || '').trim().slice(0, 200),
+  };
+}
+
+export async function identifyMachine(image, machines = [], exerciseNames = [], fetchFn = fetch) {
+  const key = getKey();
+  if (!key) throw new Error('Чтобы узнавать тренажёры по фото, подключи DeepSeek во вкладке «ИИ».');
+  const refs = machineRefs(machines);
+  const { res, json } = await post(fetchFn, key, {
+    model: API_MODEL, thinking: { type: 'disabled' }, max_tokens: 400, response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: exerciseNames.length ? `${MACHINE_PROMPT}\nУпражнения в приложении: ${exerciseNames.join(', ')}.` : MACHINE_PROMPT },
+      { role: 'user', content: [{ type: 'text', text: 'Новое фото. Что это за тренажёр? Ответ в JSON.' }, { type: 'image_url', image_url: { url: image, detail: 'high' } }, ...refs] },
+    ],
+  });
+  if (!res.ok) {
+    if ([400, 404, 422].includes(res.status) && /model/i.test(String(json?.error?.message || ''))) throw new Error('DeepSeek не дал этому ключу модель, которая видит фото.');
+    throw new Error(`${ERR[res.status] || `Ошибка ${res.status}.`}${json?.error?.message ? ` (${String(json.error.message).slice(0, 160)})` : ''}`);
+  }
+  return parseMachine(json?.choices?.[0]?.message?.content || '', machines.filter((x) => x.photo).slice(0, 20).length);
 }
