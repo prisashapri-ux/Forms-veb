@@ -253,3 +253,9 @@ test('база тренажёров сливается по названию и 
   assert.equal(r.machines[1].name, 'Баттерфляй');
   assert.throws(() => L.mergeMachines([], '{}'), /нет тренажёров/);
 });
+
+test('тоннаж не считает кардио из своих упражнений', () => {
+  const w = { exercises: [{ name: 'Гребля в тренажёре', sets: [{ weight: 20, reps: 4, level: 5 }] }, { name: 'Жим лёжа', sets: [{ weight: 50, reps: 10 }] }] };
+  assert.equal(L.workoutVolume(w), 580);
+  assert.equal(L.workoutVolume(w, (n) => (n === 'Гребля в тренажёре' ? 'cardio' : 'chest')), 500);
+});

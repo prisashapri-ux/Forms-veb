@@ -70,6 +70,7 @@ const ui = { bodyMetric: 'weight', segMode: 'muscle', period: 28, timer: null, p
 
 function save() { saveState(state); }
 const groupOf = (name) => L.groupOfIn(state, name);
+const volumeOf = (w) => L.workoutVolume(w, groupOf);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const $ = (sel, root = document) => root.querySelector(sel);
 const parseNum = (s) => { const v = Number(String(s).replace(',', '.').replace(/\s/g, '')); return Number.isFinite(v) ? v : null; };
@@ -437,7 +438,7 @@ function previewReport(report) {
 
 // ───────── Дневник ─────────
 function workoutStats(w) {
-  const vol = L.workoutVolume(w), sets = L.workoutSetCount(w);
+  const vol = volumeOf(w), sets = L.workoutSetCount(w);
   return [`${w.exercises.length} ${plural(w.exercises.length, 'упражнение', 'упражнения', 'упражнений')}`, `${sets} ${plural(sets, 'подход', 'подхода', 'подходов')}`, vol ? tonnage(vol) : null, w.durationMinutes ? `${w.durationMinutes} мин` : null].filter(Boolean);
 }
 
@@ -735,7 +736,7 @@ function viewWorkout(id) {
     </section>`;
   }).join('');
   const dateVal = (() => { const d = toDate(w.date); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); })();
-  const vol = L.workoutVolume(w);
+  const vol = volumeOf(w);
   return {
     title: w.title,
     top: topBack('#diary', fmtDay(w.date), w.finishedAt ? `<button class="text-btn" data-act="del-workout">Удалить</button>` : `<button class="text-btn strong" data-act="finish">Готово</button>`),
@@ -1451,7 +1452,7 @@ function viewAnalytics() {
     const s = new Date(ws0); s.setDate(s.getDate() - 7 * i);
     const e = new Date(s); e.setDate(e.getDate() + 7);
     const items = ws.filter((w) => { const d = toDate(w.date); return d >= s && d < e; });
-    weeks.push({ label: `${s.getDate()}.${String(s.getMonth() + 1).padStart(2, '0')}`, value: sum(items, L.workoutVolume), count: items.length, highlight: i === 0 });
+    weeks.push({ label: `${s.getDate()}.${String(s.getMonth() + 1).padStart(2, '0')}`, value: sum(items, volumeOf), count: items.length, highlight: i === 0 });
   }
   // Группы мышц.
   const sets = {};
@@ -1505,7 +1506,7 @@ function viewAnalytics() {
     title: 'Аналитика', top: topTitle('Аналитика'),
     html: `${demoBanner()}${tipsHtml}
       <div class="seg" role="tablist">${[[28, '4 недели'], [84, '3 месяца'], [364, 'Год']].map(([p, t]) => `<button class="${P === p ? 'on' : ''}" data-act="period" data-p="${p}">${t}</button>`).join('')}</div>
-      <section class="card"><div class="kpis">${kpi('тренировок', cur.length, prev.length, (v) => num(v, 0))}${kpi('тоннаж', sum(cur, L.workoutVolume), sum(prev, L.workoutVolume), tonnage)}${kpi('подходов', sum(cur, L.workoutSetCount), sum(prev, L.workoutSetCount), (v) => num(v, 0))}</div>
+      <section class="card"><div class="kpis">${kpi('тренировок', cur.length, prev.length, (v) => num(v, 0))}${kpi('тоннаж', sum(cur, volumeOf), sum(prev, volumeOf), tonnage)}${kpi('подходов', sum(cur, L.workoutSetCount), sum(prev, L.workoutSetCount), (v) => num(v, 0))}</div>
       <p class="small muted" style="margin:10px 0 0">Сравнение с предыдущим таким же периодом.</p></section>
       <section class="card"><h2>Тоннаж по неделям</h2>${barChart(weeks, { format: (v) => (v >= 1000 ? `${num(v / 1000, 1)}т` : num(v, 0)), label: 'Тоннаж по неделям' })}</section>
       <section class="card"><h2>Подходы по группам<span class="aside">≈ ${num(Object.entries(sets).filter(([g]) => g !== 'cardio').reduce((a, [, n]) => a + n, 0) / weeksN, 0)} в неделю</span></h2>${groupsHtml || '<p class="muted small">Нет рабочих подходов за период.</p>'}<p class="small muted" style="margin:8px 0 0">Для роста обычно нужно 10–20 рабочих подходов в неделю на группу.</p></section>
@@ -1520,7 +1521,7 @@ function weeksAll(ws) {
   for (const w of ws) {
     const s = L.weekStart(w.date);
     const k = s.getTime();
-    map.set(k, (map.get(k) || 0) + L.workoutVolume(w));
+    map.set(k, (map.get(k) || 0) + volumeOf(w));
   }
   return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([k, v]) => ({ date: new Date(k + 3 * L.DAY_MS), value: v }));
 }
