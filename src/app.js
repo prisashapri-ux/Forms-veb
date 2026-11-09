@@ -526,10 +526,17 @@ function newWorkout(fromProgram = null, dayIndex = 0) {
   go(`w-${w.id}`);
 }
 
+/** Подход строкой: у кардио минуты, километры и уровень, у остальных вес×повторы. */
+function setText(s, name, w) {
+  if (isHomeWorkout(w)) return `${s.reps} с`;
+  if (groupOf(name) !== 'cardio') return `${num(s.weight, 2)}×${s.reps}`;
+  return [s.weight ? `${num(s.weight, 2)} мин` : '', s.reps ? `${s.reps} км` : '', s.level ? `ур. ${num(s.level, 1)}` : ''].filter(Boolean).join(' · ') || '—';
+}
+
 function setsFromPrevious(name, beforeIso, exceptId) {
   const prev = L.previousEntry(state.workouts, name, beforeIso, exceptId);
   if (!prev) return groupOf(name) === 'cardio' ? [{ weight: 0, reps: 0, isWarmup: false, isDone: false }] : [{ weight: 0, reps: 0, isWarmup: false, isDone: false }, { weight: 0, reps: 0, isWarmup: false, isDone: false }, { weight: 0, reps: 0, isWarmup: false, isDone: false }];
-  return prev.e.sets.map((s) => ({ weight: s.weight, reps: s.reps, isWarmup: !!s.isWarmup, isDone: false }));
+  return prev.e.sets.map((s) => ({ weight: s.weight, reps: s.reps, ...(s.level ? { level: s.level } : {}), isWarmup: !!s.isWarmup, isDone: false }));
 }
 
 function viewWorkout(id) {
@@ -540,8 +547,8 @@ function viewWorkout(id) {
     const prev = L.previousEntry(state.workouts, e.name, w.date, w.id);
     const range = rangeFor(w, e.name);
     const sug = prev ? L.suggest(prev.e.sets, e.name, g, range) : null;
-    const prevText = prev ? `Прошлый раз ${fmtDay(prev.w.date, false)}: ${L.workingSets(prev.e).map((s) => `${num(s.weight, 2)}×${s.reps}`).join(', ')}` : 'Первый раз в дневнике';
     const isCardio = g === 'cardio' && !isHomeWorkout(w);
+    const prevText = prev ? `Прошлый раз ${fmtDay(prev.w.date, false)}: ${L.workingSets(prev.e).map((s) => (isCardio ? `${num(s.weight, 2)} мин, ${s.reps} км${s.level ? `, уровень ${num(s.level, 1)}` : ''}` : `${num(s.weight, 2)}×${s.reps}`)).join('; ')}` : 'Первый раз в дневнике';
     const timed = isHomeWorkout(w);
     const note = state.exercises.find((x) => x.name === e.name)?.note;
     let n = 0;
@@ -550,7 +557,8 @@ function viewWorkout(id) {
       return `<div class="set-row ${s.isDone ? 'done' : ''}">
         <button class="set-no ${s.isWarmup ? 'warm' : ''}" data-act="toggle-warm" data-e="${ei}" data-s="${si}" aria-label="${s.isWarmup ? 'Разминочный подход, сделать рабочим' : 'Рабочий подход, сделать разминочным'}">${label}</button>
         <input inputmode="decimal" enterkeyhint="next" aria-label="${isCardio ? 'Минуты' : 'Вес, кг'}" data-in="weight" data-e="${ei}" data-s="${si}" value="${s.weight ? num(s.weight, 2).replace(/\s/g, '') : ''}" placeholder="0">
-        <input inputmode="numeric" enterkeyhint="done" aria-label="${isCardio ? 'Километры' : timed ? 'Секунды' : 'Повторы'}" data-in="reps" data-e="${ei}" data-s="${si}" value="${s.reps || ''}" placeholder="0">
+        <input inputmode="numeric" enterkeyhint="${isCardio ? 'next' : 'done'}" aria-label="${isCardio ? 'Километры' : timed ? 'Секунды' : 'Повторы'}" data-in="reps" data-e="${ei}" data-s="${si}" value="${s.reps || ''}" placeholder="0">
+        ${isCardio ? `<input inputmode="decimal" enterkeyhint="done" aria-label="Уровень сопротивления" data-in="level" data-e="${ei}" data-s="${si}" value="${s.level ? num(s.level, 1).replace(/\s/g, '') : ''}" placeholder="0">` : ''}
         <button class="done-btn ${s.isDone ? 'on' : ''}" data-act="toggle-done" data-e="${ei}" data-s="${si}" aria-label="Подход выполнен" aria-pressed="${s.isDone}">${icon.check}</button>
         <button class="x-btn" data-act="del-set" data-e="${ei}" data-s="${si}" aria-label="Удалить подход">${icon.x}</button></div>`;
     }).join('');
@@ -560,7 +568,7 @@ function viewWorkout(id) {
         <button class="icon-btn" data-act="ex-menu" data-e="${ei}" aria-label="Действия с упражнением">${icon.more}</button></div>
       <div class="ex-meta">${esc(prevText)}</div>
       ${sug ? `<div class="hint"><div class="grow">Сегодня: <b>${esc(sug.headline)}</b><br><span class="muted small">${esc(sug.reason)}</span></div><button class="btn small secondary" data-act="apply-sug" data-e="${ei}">Подставить</button></div>` : ''}
-      <div class="sets"><div class="set-row head"><span>№</span><span>${isCardio ? 'мин' : 'кг'}</span><span>${isCardio ? 'км' : timed ? 'сек' : 'повт'}</span><span></span><span></span></div>${rows}</div>
+      <div class="sets ${isCardio ? 'cardio' : ''}"><div class="set-row head"><span>№</span><span>${isCardio ? 'мин' : 'кг'}</span><span>${isCardio ? 'км' : timed ? 'сек' : 'повт'}</span>${isCardio ? '<span>уровень</span>' : ''}<span></span><span></span></div>${rows}</div>
       <button class="btn ghost block" style="margin-top:6px;min-height:40px" data-act="add-set" data-e="${ei}">${icon.plus} Подход</button>
     </section>`;
   }).join('');
@@ -635,7 +643,7 @@ function exerciseInfo(name) {
       <div class="card stack"><div class="cat" style="color:${GROUP_COLOR[groupOf(name)]}">${L.GROUPS[groupOf(name)]}</div>${info ? `<div class="muted small" style="margin-top:-6px">${esc(info.muscles)}</div>` : ''}
       ${info?.tips.length ? `<ul class="tips-list">${info.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '<span class="muted small">Подсказок по технике для этого упражнения нет.</span>'}</div>
       <div class="card"><div class="field"><label for="ex-note">Моя заметка: где тренажёр, настройки сиденья</label><textarea id="ex-note">${esc(ex?.note || '')}</textarea></div></div>
-      ${hist.length ? `<div class="section-caption">Последние разы</div><div class="card list">${hist.map((w) => { const e = w.exercises.find((x) => x.name === name); return `<div class="item"><span class="grow"><span class="title">${fmtDay(w.date)}</span><div class="sub tabular">${isHomeWorkout(w) ? e.sets.map((s) => `${s.reps} с`).join(', ') : L.workingSets(e).map((s) => `${num(s.weight, 2)}×${s.reps}`).join(', ') || '—'}</div></span></div>`; }).join('')}</div>` : ''}
+      ${hist.length ? `<div class="section-caption">Последние разы</div><div class="card list">${hist.map((w) => { const e = w.exercises.find((x) => x.name === name); return `<div class="item"><span class="grow"><span class="title">${fmtDay(w.date)}</span><div class="sub tabular">${isHomeWorkout(w) ? e.sets.map((s) => `${s.reps} с`).join(', ') : L.workingSets(e).map((s) => setText(s, name, w)).join(', ') || '—'}</div></span></div>`; }).join('')}</div>` : ''}
       <a class="btn secondary block" href="#ex-${encodeURIComponent(name)}">Прогресс по упражнению</a>
       ${ex?.isCustom && !state.workouts.some((w) => w.exercises.some((e) => e.name === name)) ? '<button class="btn danger block" data-del-ex>Удалить своё упражнение</button>' : ''}`,
     onOpen: (el) => {
@@ -1354,7 +1362,7 @@ function viewExercise(nameEnc) {
   const maxV = Math.max(...rows.map(({ e }) => L.entryVolume(e)));
   const best = Math.max(...pts.map((p) => p.value));
   const maxReps = Math.max(...rows.flatMap(({ e }) => L.workingSets(e).map((s) => s.reps)));
-  const hist = [...rows].reverse().slice(0, 20).map(({ w, e }) => `<div class="item"><span class="grow"><span class="title">${fmtDay(w.date)}</span><div class="sub tabular">${L.workingSets(e).map((s) => `${num(s.weight, 2)}×${s.reps}`).join(', ')}</div></span><span class="small muted tabular">1ПМ ${num(L.bestE1rm(e), 0)}</span></div>`).join('');
+  const hist = [...rows].reverse().slice(0, 20).map(({ w, e }) => `<div class="item"><span class="grow"><span class="title">${fmtDay(w.date)}</span><div class="sub tabular">${L.workingSets(e).map((s) => setText(s, name, w)).join(', ')}</div></span><span class="small muted tabular">1ПМ ${num(L.bestE1rm(e), 0)}</span></div>`).join('');
   return {
     title: name, top: topBack('#analytics', name),
     html: `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>
@@ -1584,6 +1592,7 @@ document.addEventListener('input', (ev) => {
     if (!S) return;
     const v = parseNum(el.value);
     if (el.dataset.in === 'weight') S.weight = v != null && v >= 0 && v <= 1000 ? v : 0;
+    else if (el.dataset.in === 'level') { if (v != null && v > 0 && v <= 100) S.level = Math.round(v * 10) / 10; else delete S.level; }
     else S.reps = v != null && v >= 0 && v <= 1000 ? Math.round(v) : 0;
     save();
     const stats = $('#w-stats');
@@ -1605,7 +1614,8 @@ document.addEventListener('keydown', (ev) => {
   ev.preventDefault();
   const inputs = [...document.querySelectorAll('[data-in]')];
   const i = inputs.indexOf(ev.target);
-  if (ev.target.dataset.in === 'weight' && inputs[i + 1]) inputs[i + 1].focus(); else ev.target.blur();
+  const nextIn = inputs[i + 1];
+  if (nextIn && (ev.target.dataset.in === 'weight' || (ev.target.dataset.in === 'reps' && nextIn.dataset.in === 'level'))) nextIn.focus(); else ev.target.blur();
 });
 
 // ───────── Запуск ─────────

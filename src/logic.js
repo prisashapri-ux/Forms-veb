@@ -114,7 +114,7 @@ export function uid() {
 
 // ───────── Тренировки ─────────
 
-export const workingSets = (entry) => entry.sets.filter((s) => !s.isWarmup && s.reps > 0);
+export const workingSets = (entry) => entry.sets.filter((s) => !s.isWarmup && (s.reps > 0 || (s.level > 0 && s.weight > 0)));
 export const e1rm = (s) => (s.reps <= 0 ? 0 : s.reps === 1 ? s.weight : s.weight * (1 + s.reps / 30));
 export const entryVolume = (entry) => workingSets(entry).reduce((a, s) => a + s.weight * s.reps, 0);
 export const workoutVolume = (w) => w.exercises.reduce((a, e) => a + entryVolume(e), 0);
@@ -285,7 +285,7 @@ const MAJOR = ['chest', 'back', 'legs', 'shoulders'];
 export function sessionsFrom(workouts, groupOf) {
   return workouts.map((w) => ({
     date: toDate(w.date),
-    exercises: w.exercises.map((e) => ({ name: e.name, group: groupOf(e.name), sets: workingSets(e).map((s) => ({ weight: s.weight, reps: s.reps })) })),
+    exercises: w.exercises.map((e) => ({ name: e.name, group: groupOf(e.name), sets: workingSets(e).map((s) => (s.level ? { weight: s.weight, reps: s.reps, level: s.level } : { weight: s.weight, reps: s.reps })) })),
   })).sort((a, b) => a.date - b.date);
 }
 
@@ -464,7 +464,7 @@ export function makeBackup(state) {
       date: iso(w.date), title: w.title, note: w.note || '', durationMinutes: w.durationMinutes ?? undefined,
       programID: w.programID ?? undefined, programDay: w.programDay ?? undefined, finishedAt: w.finishedAt ? iso(w.finishedAt) : undefined,
       exercises: w.exercises.map((e, i) => ({ order: i, exerciseName: e.name, group: groupOfIn(state, e.name),
-        sets: e.sets.map((s, j) => ({ order: j, weight: s.weight, reps: s.reps, isWarmup: !!s.isWarmup, isDone: !!s.isDone })) })),
+        sets: e.sets.map((s, j) => clean({ order: j, weight: s.weight, reps: s.reps, level: s.level || undefined, isWarmup: !!s.isWarmup, isDone: !!s.isDone })) })),
     })),
     food: [...state.food].sort((a, b) => (a.date < b.date ? -1 : 1)).map((f) => ({ date: iso(f.date), title: f.title, protein: f.protein, kcal: f.kcal })),
     // Свои тренировки из конструктора. iOS-приложение незнакомые поля пропускает.
@@ -538,7 +538,7 @@ export function readBackup(json) {
       }
       return { name: e.exerciseName, sets: [...(e.sets || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((s) => ({
         weight: finite(s.weight, 0, 1000) ? s.weight : 0, reps: Number.isInteger(s.reps) && s.reps >= 0 && s.reps <= 1000 ? s.reps : 0,
-        isWarmup: !!s.isWarmup, isDone: !!s.isDone })) };
+        ...(finite(s.level, 1, 100) ? { level: Math.round(s.level * 10) / 10 } : {}), isWarmup: !!s.isWarmup, isDone: !!s.isDone })) };
     });
     state.workouts.push({ id: uid(), date: d.toISOString(), title: String(w.title || 'Тренировка'), note: String(w.note || ''),
       durationMinutes: finite(w.durationMinutes, 0, 1440) ? w.durationMinutes : null, programID: w.programID ?? null,

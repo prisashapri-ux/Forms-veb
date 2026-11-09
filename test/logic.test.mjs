@@ -196,3 +196,14 @@ test('разметка ответов ИИ безопасна', async () => {
   const h = A.mdLite('### План\n**Жим** 5×5\n- раз <script>\n- два\n\n1. три');
   assert.equal(h, '<h4>План</h4><p><b>Жим</b> 5×5</p><ul><li>раз &lt;script&gt;</li><li>два</li></ul><ol><li>три</li></ol>');
 });
+
+test('уровень сопротивления кардио сохраняется в резервной копии', () => {
+  const s = L.emptyState();
+  s.workouts.push({ id: 'w1', date: '2026-11-09T08:00:00.000Z', title: 'Кардио', note: '', durationMinutes: 30, programID: null, programDay: null, finishedAt: '2026-11-09T08:40:00.000Z',
+    exercises: [{ name: 'Эллипс', sets: [{ weight: 30, reps: 5, level: 8, isWarmup: false, isDone: true }, { weight: 10, reps: 0, isWarmup: false, isDone: true }] }] });
+  const back = L.readBackup(JSON.parse(JSON.stringify(L.makeBackup(s))));
+  const sets = back.workouts[0].exercises[0].sets;
+  assert.equal(sets[0].level, 8);
+  assert.equal('level' in sets[1], false);
+  assert.equal(L.workingSets({ sets }).length, 1);
+});

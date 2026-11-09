@@ -583,3 +583,4 @@ main.ai-view { padding-bottom: calc(190px + env(safe-area-inset-bottom, 0px)); g
 .ai-ex .btn.small { background: var(--indigo); }
 .ai-ex .btn.small.ghost { background: var(--fill); color: var(--indigo); min-height: 34px; }
 .ai-ex .btn svg { width: 16px; height: 16px; }
+.sets.cardio .set-row { grid-template-columns: 30px repeat(3, minmax(0, 1fr)) 44px 30px; gap: 5px; }
