@@ -117,7 +117,9 @@ export function uid() {
 export const workingSets = (entry) => entry.sets.filter((s) => !s.isWarmup && (s.reps > 0 || (s.level > 0 && s.weight > 0)));
 export const e1rm = (s) => (s.reps <= 0 ? 0 : s.reps === 1 ? s.weight : s.weight * (1 + s.reps / 30));
 export const entryVolume = (entry) => workingSets(entry).reduce((a, s) => a + s.weight * s.reps, 0);
-export const workoutVolume = (w) => w.exercises.reduce((a, e) => a + entryVolume(e), 0);
+// У кардио в «весе» минуты, а в «повторах» километры: в тоннаж они не идут.
+const CARDIO_NAMES = new Set(DEFAULT_EXERCISES.filter(([, g]) => g === 'cardio').map(([n]) => n));
+export const workoutVolume = (w) => w.exercises.reduce((a, e) => a + (CARDIO_NAMES.has(e.name) ? 0 : entryVolume(e)), 0);
 export const workoutSetCount = (w) => w.exercises.reduce((a, e) => a + workingSets(e).length, 0);
 export const bestE1rm = (entry) => Math.max(0, ...workingSets(entry).map(e1rm));
 

@@ -533,6 +533,38 @@ function setText(s, name, w) {
   return [s.weight ? `${num(s.weight, 2)} мин` : '', s.reps ? `${s.reps} км` : '', s.level ? `ур. ${num(s.level, 1)}` : ''].filter(Boolean).join(' · ') || '—';
 }
 
+let cardioBusy = null;
+
+/** Фото табло кардиотренажёра: ИИ читает минуты, км, уровень и калории и заполняет подход. */
+function cardioPhoto(w, ei) {
+  const E = w.exercises[ei];
+  if (!E) return;
+  if (!AI.getKey()) { toast('Подключи DeepSeek во вкладке «ИИ», чтобы читать табло'); return; }
+  pickFile('image/*', async (f) => {
+    const busy = `${w.id}:${ei}`;
+    cardioBusy = busy; render();
+    try {
+      const { image } = await aiPhotoFrom(f);
+      const r = await AI.readCardioDisplay(image, E.name);
+      let S = [...E.sets].reverse().find((x) => !x.isDone && !x.weight && !x.reps);
+      if (!S) { S = { weight: 0, reps: 0, isWarmup: false, isDone: false }; E.sets.push(S); }
+      if (r.minutes != null) S.weight = r.minutes;
+      if (r.km != null) S.reps = Math.round(r.km);
+      if (r.level != null) S.level = r.level;
+      S.isDone = true;
+      const line = `${E.name}: ${[r.minutes != null ? `${num(r.minutes, 1)} мин` : '', r.km != null ? `${num(r.km, 2)} км` : '', r.level != null ? `уровень ${num(r.level, 1)}` : '', r.calories != null ? `${r.calories} ккал` : ''].filter(Boolean).join(', ')}`;
+      w.note = (w.note ? `${w.note}\n` : '') + line;
+      save();
+      toast(`Записал: ${line.slice(E.name.length + 2)}`);
+    } catch (e) {
+      toast(e.message || 'Не получилось прочитать табло');
+    } finally {
+      if (cardioBusy === busy) cardioBusy = null;
+      if (route().name === 'w') render();
+    }
+  });
+}
+
 function setsFromPrevious(name, beforeIso, exceptId) {
   const prev = L.previousEntry(state.workouts, name, beforeIso, exceptId);
   if (!prev) return groupOf(name) === 'cardio' ? [{ weight: 0, reps: 0, isWarmup: false, isDone: false }] : [{ weight: 0, reps: 0, isWarmup: false, isDone: false }, { weight: 0, reps: 0, isWarmup: false, isDone: false }, { weight: 0, reps: 0, isWarmup: false, isDone: false }];
@@ -569,7 +601,9 @@ function viewWorkout(id) {
       <div class="ex-meta">${esc(prevText)}</div>
       ${sug ? `<div class="hint"><div class="grow">Сегодня: <b>${esc(sug.headline)}</b><br><span class="muted small">${esc(sug.reason)}</span></div><button class="btn small secondary" data-act="apply-sug" data-e="${ei}">Подставить</button></div>` : ''}
       <div class="sets ${isCardio ? 'cardio' : ''}"><div class="set-row head"><span>№</span><span>${isCardio ? 'мин' : 'кг'}</span><span>${isCardio ? 'км' : timed ? 'сек' : 'повт'}</span>${isCardio ? '<span>уровень</span>' : ''}<span></span><span></span></div>${rows}</div>
-      <button class="btn ghost block" style="margin-top:6px;min-height:40px" data-act="add-set" data-e="${ei}">${icon.plus} Подход</button>
+      ${isCardio ? `<div class="cardio-btns"><button class="btn ghost" data-act="add-set" data-e="${ei}">${icon.plus} Подход</button>
+        <button class="btn ghost" data-act="cardio-photo" data-e="${ei}" ${cardioBusy === `${w.id}:${ei}` ? 'disabled' : ''}>${icon.camera} ${cardioBusy === `${w.id}:${ei}` ? 'Читаю табло…' : 'Фото табло'}</button></div>`
+        : `<button class="btn ghost block" style="margin-top:6px;min-height:40px" data-act="add-set" data-e="${ei}">${icon.plus} Подход</button>`}
     </section>`;
   }).join('');
   const dateVal = (() => { const d = toDate(w.date); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); })();
@@ -1524,6 +1558,7 @@ document.addEventListener('click', (ev) => {
       S.isDone = !S.isDone; save(); render();
       if (S.isDone) startTimer(state.settings.restSeconds || 120);
       break;
+    case 'cardio-photo': cardioPhoto(w, +el.dataset.e); break;
     case 'del-set': E.sets.splice(+el.dataset.s, 1); save(); render(); break;
     case 'add-set': { const last = E.sets.at(-1); E.sets.push(last ? { ...last, isWarmup: false, isDone: false } : { weight: 0, reps: 0, isWarmup: false, isDone: false }); save(); render(); break; }
     case 'finish':

@@ -200,3 +200,43 @@ export function mdLite(src) {
   flushPara(); flushList();
   return out.join('');
 }
+
+// ───────── Табло кардиотренажёра по фото ─────────
+const DISPLAY_PROMPT = `Ты считываешь итог с табло кардиотренажёра (эллипс, велотренажёр, беговая дорожка) по фото.
+Ответь только JSON без пояснений: {"ok":true,"minutes":число или null,"km":число или null,"level":число или null,"calories":число или null,"note":"коротко, что не удалось прочитать"}.
+minutes: время тренировки в минутах, «32:30» это 32.5. km: дистанция в километрах, мили переведи в км. level: уровень сопротивления или нагрузки (Level, Resistance, Res), для дорожки наклон не путай с уровнем: если уровня нет, null.
+calories: ккал. Не выдумывай: если значения на табло не видно, ставь null. Если на фото не табло тренажёра, верни {"ok":false,"note":"почему"}.`;
+
+const clampNum = (v, max, digits = 1) => {
+  const n = typeof v === 'string' ? Number(v.replace(',', '.')) : v;
+  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0 || n > max) return null;
+  const k = 10 ** digits;
+  return Math.round(n * k) / k;
+};
+
+/** Разбирает ответ модели про табло: проверяет диапазоны, лишнее отбрасывает. */
+export function parseDisplay(text) {
+  let o;
+  try { o = JSON.parse(String(text).replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new Error('ИИ ответил непонятно. Попробуй сфотографировать ещё раз.'); }
+  if (!o || o.ok === false) throw new Error(`Не получилось прочитать табло${o?.note ? `: ${String(o.note).slice(0, 140)}` : '.'}`);
+  const r = { minutes: clampNum(o.minutes, 600), km: clampNum(o.km, 200, 2), level: clampNum(o.level, 100), calories: clampNum(o.calories, 5000, 0) };
+  if (r.minutes == null && r.km == null && r.level == null && r.calories == null) throw new Error('На фото не видно цифр табло. Сними ближе и без бликов.');
+  return r;
+}
+
+export async function readCardioDisplay(image, exercise, fetchFn = fetch) {
+  const key = getKey();
+  if (!key) throw new Error('Чтобы читать табло по фото, подключи DeepSeek во вкладке «ИИ».');
+  const { res, json } = await post(fetchFn, key, {
+    model: API_MODEL, thinking: { type: 'disabled' }, max_tokens: 300, response_format: { type: 'json_object' },
+    messages: [{ role: 'system', content: DISPLAY_PROMPT }, { role: 'user', content: [
+      { type: 'text', text: `Тренажёр: ${exercise}. Считай итог тренировки с табло, ответ в JSON.` },
+      { type: 'image_url', image_url: { url: image, detail: 'high' } },
+    ] }],
+  });
+  if (!res.ok) {
+    if ([400, 404, 422].includes(res.status) && /model/i.test(String(json?.error?.message || ''))) throw new Error('DeepSeek не дал этому ключу модель, которая видит фото.');
+    throw new Error(`${ERR[res.status] || `Ошибка ${res.status}.`}${json?.error?.message ? ` (${String(json.error.message).slice(0, 160)})` : ''}`);
+  }
+  return parseDisplay(json?.choices?.[0]?.message?.content || '');
+}

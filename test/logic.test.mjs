@@ -207,3 +207,19 @@ test('уровень сопротивления кардио сохраняет�
   assert.equal('level' in sets[1], false);
   assert.equal(L.workingSets({ sets }).length, 1);
 });
+
+test('табло кардио по фото: разбор и запрос', async () => {
+  const A = await import('../src/ai.js');
+  assert.deepEqual(A.parseDisplay('{"ok":true,"minutes":"32,5","km":5.27,"level":8,"calories":312.4}'), { minutes: 32.5, km: 5.27, level: 8, calories: 312 });
+  assert.deepEqual(A.parseDisplay('```json\n{"ok":true,"minutes":30,"km":null,"level":999}\n```'), { minutes: 30, km: null, level: null, calories: null });
+  assert.throws(() => A.parseDisplay('{"ok":false,"note":"это кот"}'), /это кот/);
+  assert.throws(() => A.parseDisplay('{"ok":true}'), /не видно цифр/);
+  assert.throws(() => A.parseDisplay('не json'), /непонятно/);
+  globalThis.localStorage = { m: { 'forma.deepseek.key': 'sk-test' }, getItem(k) { return this.m[k] ?? null; }, setItem(k, v) { this.m[k] = v; }, removeItem(k) { delete this.m[k]; } };
+  let body;
+  const r = await A.readCardioDisplay('data:image/jpeg;base64,X', 'Эллипс', async (u, o) => { body = JSON.parse(o.body); return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{"ok":true,"minutes":20,"km":3,"level":6}' } }] }) }; });
+  assert.equal(r.level, 6);
+  assert.equal(body.model, 'deepseek-flash');
+  assert.deepEqual(body.response_format, { type: 'json_object' });
+  assert.equal(body.messages[1].content[1].image_url.url, 'data:image/jpeg;base64,X');
+});

@@ -584,3 +584,6 @@ main.ai-view { padding-bottom: calc(190px + env(safe-area-inset-bottom, 0px)); g
 .ai-ex .btn.small.ghost { background: var(--fill); color: var(--indigo); min-height: 34px; }
 .ai-ex .btn svg { width: 16px; height: 16px; }
 .sets.cardio .set-row { grid-template-columns: 30px repeat(3, minmax(0, 1fr)) 44px 30px; gap: 5px; }
+.cardio-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+.cardio-btns .btn { min-height: 40px; }
+.cardio-btns .btn:disabled { opacity: 0.55; }
