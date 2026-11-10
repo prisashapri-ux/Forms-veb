@@ -164,7 +164,8 @@ function render(scrollTop = false) {
   const tab = TAB_OF[r.name] || 'body';
   if (r.name !== 'build') ui.draft = null;
   document.body.dataset.tab = tab;
-  $('#app').innerHTML = `<header class="top ${v.top.includes('data-nav') ? 'nav' : ''}">${v.top}</header><main class="view ${v.cls || ''}" id="view">${v.html}</main>`;
+  document.body.classList.toggle('chat-mode', r.name === 'ai');
+  $('#app').innerHTML = `<header class="top ${v.top.includes('data-nav') ? 'nav' : ''}">${v.top}</header><main class="view ${v.cls || ''}" id="view">${v.html}</main>${v.foot || ''}`;
   $('#tabs').innerHTML = TABS.map(([id, t, ic, c]) => `<a href="#${id}" style="--tabc:${c}" class="${tab === id ? 'on' : ''}" ${tab === id ? 'aria-current="page"' : ''}>${ic}<span>${t}</span></a>`).join('');
   document.title = v.title ? `${v.title} · Форма` : 'Форма';
   if (scrollTop) scrollTo(0, 0); else scrollTo(0, y);
@@ -1336,7 +1337,7 @@ function viewAI() {
         <button class="pill ${thinking ? 'on' : ''}" data-act="ai-think" aria-pressed="${thinking}">${icon.bolt} Думающая</button>
         <details class="ai-peek"><summary>Что видит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}</pre></details>
         <button class="send" data-act="ai-send" aria-label="Отправить" ${aiState.busy ? 'disabled' : ''}>${icon.up}</button></div></div></div>` : '';
-  return { title: 'ИИ-советник', cls: 'ai-view', top: `${left}<h1 class="small">ИИ-советник</h1>${right}`, html: `${body}${composer}`, after: () => { autoGrow(); if (chat?.msgs.length) scrollTo(0, document.body.scrollHeight); } };
+  return { title: 'ИИ-советник', cls: 'ai-view', top: `${left}<h1 class="small">ИИ-советник</h1>${right}`, html: body, foot: composer, after: () => { autoGrow(); fitViewport(); if (chat?.msgs.length) feedToEnd(); } };
 }
 
 /** Карточка упражнения из ответа ИИ: добавить в список и в тренировку. */
@@ -1384,6 +1385,23 @@ async function aiPhotoFrom(file) {
     return { image: draw(1280, 0.82), thumb: draw(240, 0.6) };
   } finally { URL.revokeObjectURL(url); }
 }
+
+// Чат ИИ живёт в неподвижной рамке ровно по видимой области экрана: на iPhone
+// клавиатура и прокрутка окна иначе сдвигают поле ввода и вкладки на середину.
+const feedToEnd = () => { const m = $('#view'); if (m) m.scrollTop = m.scrollHeight; };
+function fitViewport() {
+  const vv = window.visualViewport;
+  const h = vv ? vv.height : innerHeight;
+  const root = document.documentElement.style;
+  root.setProperty('--vvh', `${Math.round(h)}px`);
+  root.setProperty('--vvt', `${Math.round(vv ? vv.offsetTop : 0)}px`);
+  document.body.classList.toggle('kb', innerHeight - h > 120);
+  if (document.body.classList.contains('chat-mode') && scrollY) scrollTo(0, 0);
+}
+if (window.visualViewport) { visualViewport.addEventListener('resize', fitViewport); visualViewport.addEventListener('scroll', fitViewport); }
+addEventListener('resize', fitViewport);
+addEventListener('focusout', () => setTimeout(fitViewport, 60));
+addEventListener('focusin', (e) => { if (e.target.id === 'ai-input') setTimeout(() => { fitViewport(); feedToEnd(); }, 300); });
 
 function autoGrow() {
   const t = $('#ai-input');

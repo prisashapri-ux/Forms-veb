@@ -512,6 +512,14 @@ body[data-tab="ai"] { --accent: var(--indigo); }
 
 /* ИИ-помощник */
 main.ai-view { padding-bottom: calc(190px + env(safe-area-inset-bottom, 0px)); gap: 16px; }
+body.chat-mode { overflow: hidden; overscroll-behavior: none; }
+body.chat-mode .app { position: fixed; left: 0; right: 0; top: var(--vvt, 0px); height: var(--vvh, 100dvh); max-width: none; min-height: 0; display: flex; flex-direction: column; }
+body.chat-mode .app > .top { flex: none; }
+body.chat-mode main.ai-view { flex: 1; min-height: 0; width: 100%; max-width: 680px; margin: 0 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding-bottom: 16px; }
+body.chat-mode .ai-composer { position: static; flex: none; padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+body.chat-mode main.ai-view:not(:has(+ .ai-composer)) { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+body.chat-mode.kb .tabbar { display: none; }
+body.chat-mode.kb .ai-composer { padding-bottom: 8px; }
 .ai-logo { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; color: #fff; background: linear-gradient(150deg, #7d7aff, #5856d6 55%, #af52de); box-shadow: 0 8px 24px color-mix(in srgb, var(--indigo) 35%, transparent); }
 .ai-logo svg { width: 34px; height: 34px; }
 .ai-logo.sm { width: 40px; height: 40px; border-radius: 12px; box-shadow: none; flex: none; }
