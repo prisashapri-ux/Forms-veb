@@ -1854,10 +1854,19 @@ document.addEventListener('click', (ev) => {
       ev.preventDefault(); aiAct(act, el); break;
     case 'ai-model': AI.setMode(el.dataset.m); render(); break;
     case 'ai-save': {
-      const v = $('#ai-key').value.trim();
-      if (v && !/^sk-[\w-]{10,}$/.test(v)) { toast('Ключ DeepSeek начинается с sk-'); break; }
-      if (!v && route().name === 'ai') { toast('Вставь ключ'); break; }
-      AI.setKey(v); render(); toast(v ? 'Ключ сохранён' : 'Ключ удалён'); break;
+      const v = AI.cleanKey($('#ai-key').value);
+      if (!v) { if (route().name === 'ai') toast('Вставь ключ'); else { AI.setKey(''); render(); toast('Ключ удалён'); } break; }
+      if (!v.startsWith('sk-')) { toast('Это не ключ DeepSeek: он начинается с sk-. Его создают на platform.deepseek.com → API keys'); break; }
+      const label = el.textContent; el.disabled = true; el.textContent = 'Проверяю ключ…';
+      AI.checkKey(v).then((r) => {
+        if (r.state === 'bad') { el.disabled = false; el.textContent = label; toast('DeepSeek не принял ключ. Он показывается только один раз при создании: создай новый ключ и скопируй его целиком'); return; }
+        AI.setKey(v); render();
+        toast(r.state === 'ok' ? `Ключ работает${r.balance ? `, на счёте ${r.balance}` : ''}`
+          : r.state === 'money' ? 'Ключ верный, но на счёте DeepSeek нет денег. Пополни баланс на platform.deepseek.com'
+          : r.state === 'net' ? 'Ключ сохранён, но DeepSeek сейчас не отвечает. Проверь интернет или VPN'
+          : `Ключ сохранён, но DeepSeek ответил ошибкой ${r.status}`);
+      });
+      break;
     }
     case 'ai-forget': AI.setKey(''); render(); toast('Ключ удалён'); break;
     case 'b-sec': case 'b-sets': case 'b-rounds': case 'b-rest': case 'b-rrest': case 'b-del': case 'b-up': case 'b-add': case 'b-save': case 'b-delete':

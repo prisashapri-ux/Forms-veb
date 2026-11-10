@@ -13,7 +13,23 @@ const ls = {
   set(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch { /* приватный режим */ } },
 };
 export const getKey = () => ls.get(KEY);
-export const setKey = (v) => ls.set(KEY, String(v || '').trim());
+// Убираем всё, что прилипает при копировании: пробелы, переносы, невидимые символы, кавычки.
+export const cleanKey = (v) => String(v || '').replace(/[\s\u200B-\u200D\u2060\uFEFF"'«»`]/g, '');
+export const setKey = (v) => ls.set(KEY, cleanKey(v));
+
+/** Проверяет ключ запросом баланса: ok | bad (401) | money (нет баланса) | net (нет связи) | err. */
+export async function checkKey(key, fetchFn = fetch) {
+  let res;
+  try {
+    res = await fetchFn('https://api.deepseek.com/user/balance', { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } });
+  } catch { return { state: 'net' }; }
+  if (res.status === 401 || res.status === 403) return { state: 'bad' };
+  if (!res.ok) return { state: 'err', status: res.status };
+  let j = null; try { j = await res.json(); } catch { /* пусто */ }
+  const b = j?.balance_infos?.[0];
+  if (j && j.is_available === false) return { state: 'money', balance: b ? `${b.total_balance} ${b.currency}` : '' };
+  return { state: 'ok', balance: b ? `${b.total_balance} ${b.currency}` : '' };
+}
 // Старые значения deepseek-reasoner/deepseek-chat из прошлых версий переводятся в режимы.
 export const getMode = () => { const v = ls.get(MODEL); return v === 'think' || v === 'deepseek-reasoner' ? 'think' : 'fast'; };
 export const setMode = (v) => ls.set(MODEL, v === 'think' ? 'think' : 'fast');
@@ -125,7 +141,7 @@ export function machineRefs(machines) {
 }
 
 const ERR = {
-  401: 'Ключ не подошёл. Проверь его в настройках.', 402: 'На счёте DeepSeek закончились деньги. Пополни баланс на platform.deepseek.com.',
+  401: 'DeepSeek не принял ключ. Создай новый на platform.deepseek.com → API keys и вставь его целиком.', 402: 'На счёте DeepSeek закончились деньги. Пополни баланс на platform.deepseek.com.',
   429: 'Слишком много запросов. Подожди минуту и спроси снова.', 500: 'У DeepSeek сбой. Попробуй позже.', 503: 'DeepSeek перегружен. Попробуй позже.',
 };
 

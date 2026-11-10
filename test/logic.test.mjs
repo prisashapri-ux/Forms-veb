@@ -259,3 +259,14 @@ test('тоннаж не считает кардио из своих упражн
   assert.equal(L.workoutVolume(w), 580);
   assert.equal(L.workoutVolume(w, (n) => (n === 'Гребля в тренажёре' ? 'cardio' : 'chest')), 500);
 });
+
+test('ключ DeepSeek чистится и проверяется', async () => {
+  const AI = await import('../src/ai.js');
+  assert.equal(AI.cleanKey(' "sk-ab​c12 3"\n'), 'sk-abc123');
+  const mk = (status, body) => async () => ({ status, ok: status < 300, json: async () => body });
+  assert.equal((await AI.checkKey('sk-x', mk(401, {}))).state, 'bad');
+  assert.equal((await AI.checkKey('sk-x', mk(200, { is_available: false, balance_infos: [] }))).state, 'money');
+  const ok = await AI.checkKey('sk-x', mk(200, { is_available: true, balance_infos: [{ total_balance: '5.00', currency: 'USD' }] }));
+  assert.equal(ok.state, 'ok'); assert.equal(ok.balance, '5.00 USD');
+  assert.equal((await AI.checkKey('sk-x', async () => { throw new TypeError('x'); })).state, 'net');
+});
