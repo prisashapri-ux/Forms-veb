@@ -629,3 +629,4 @@ main.ai-view { padding-bottom: calc(190px + env(safe-area-inset-bottom, 0px)); g
 .cal-d.has { background: var(--orange); color: #fff; font-weight: 700; }
 .cal-d.has.home { background: var(--pink); }
 .cal-d.today:not(.has) { color: var(--orange); font-weight: 700; box-shadow: inset 0 0 0 2px var(--orange); }
+button.back-btn { border: 0; background: transparent; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }

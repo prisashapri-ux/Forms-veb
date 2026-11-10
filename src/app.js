@@ -51,6 +51,7 @@ const icon = {
   moon: I('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
   scaleBal: I('<path d="M12 3v18M5 21h14M6 7h12M6 7l-3 7a3 3 0 0 0 6 0L6 7zM18 7l-3 7a3 3 0 0 0 6 0l-3-7z"/>'),
   person: I('<circle cx="12" cy="7" r="3.5"/><path d="M5 21a7 7 0 0 1 14 0"/>'),
+  key: I('<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>'),
   calendar: I('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
   spark: I('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"/>'),
   compose: I('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>'),
@@ -1301,8 +1302,9 @@ function viewAI() {
   const hasKey = !!AI.getKey();
   const chat = aiCurrent();
   const thinking = AI.isThinking();
-  const left = `<span data-nav class="nav-left"><button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button></span>`;
-  const right = `<span class="nav-right"><button class="icon-btn plain" data-act="ai-new" aria-label="Новый чат">${icon.compose}</button></span>`;
+  const inChat = !!chat?.msgs.length;
+  const left = `<span data-nav class="nav-left">${inChat ? `<button class="back-btn" data-act="ai-new" aria-label="Назад к началу">${icon.back}<span>Назад</span></button>` : `<button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button>`}</span>`;
+  const right = `<span class="nav-right">${inChat ? `<button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button>` : hasKey ? `<button class="icon-btn plain" data-act="ai-key" aria-label="Заменить ключ">${icon.key}</button>` : ''}<button class="icon-btn plain" data-act="ai-new" aria-label="Новый чат">${icon.compose}</button></span>`;
   let body;
   if (!hasKey) {
     body = `<div class="ai-hello"><span class="ai-logo">${icon.spark}</span><h2>ИИ-советник</h2><p>Спрашивай своими словами про тренировки, питание и замеры. Ответ учитывает твои рабочие веса, подходы и InBody.</p></div>
@@ -1388,6 +1390,17 @@ function autoGrow() {
   if (!t) return;
   t.style.height = 'auto';
   t.style.height = `${Math.min(160, t.scrollHeight)}px`;
+}
+
+function aiKeySheet() {
+  const k = AI.getKey();
+  openSheet({
+    title: 'Ключ DeepSeek', left: 'Закрыть',
+    body: `<p class="small muted" style="margin:0">Сейчас подключён ключ ${k ? `<b>${esc(k.slice(0, 5))}…${esc(k.slice(-4))}</b>` : 'не задан'}. Новый ключ создай на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com → API keys</a> и вставь сюда.</p>
+      <input id="ai-key" class="search" type="password" autocomplete="off" spellcheck="false" placeholder="Новый ключ sk-…">
+      <button class="btn block" data-act="ai-save" style="background:var(--indigo)">Проверить и заменить</button>
+      ${k ? '<button class="btn danger block" data-act="ai-forget">Удалить ключ</button>' : ''}`,
+  });
 }
 
 function aiHistory() {
@@ -1853,6 +1866,7 @@ document.addEventListener('click', (ev) => {
     case 'ai-photo': case 'ai-photo-x': case 'ai-ex-add': case 'ai-ex-workout': case 'ai-ex-gym':
       ev.preventDefault(); aiAct(act, el); break;
     case 'ai-model': AI.setMode(el.dataset.m); render(); break;
+    case 'ai-key': aiKeySheet(); break;
     case 'ai-save': {
       const v = AI.cleanKey($('#ai-key').value);
       if (!v) { if (route().name === 'ai') toast('Вставь ключ'); else { AI.setKey(''); render(); toast('Ключ удалён'); } break; }
@@ -1860,7 +1874,7 @@ document.addEventListener('click', (ev) => {
       const label = el.textContent; el.disabled = true; el.textContent = 'Проверяю ключ…';
       AI.checkKey(v).then((r) => {
         if (r.state === 'bad') { el.disabled = false; el.textContent = label; toast('DeepSeek не принял ключ. Он показывается только один раз при создании: создай новый ключ и скопируй его целиком'); return; }
-        AI.setKey(v); render();
+        AI.setKey(v); closeSheet(); render();
         toast(r.state === 'ok' ? `Ключ работает${r.balance ? `, на счёте ${r.balance}` : ''}`
           : r.state === 'money' ? 'Ключ верный, но на счёте DeepSeek нет денег. Пополни баланс на platform.deepseek.com'
           : r.state === 'net' ? 'Ключ сохранён, но DeepSeek сейчас не отвечает. Проверь интернет или VPN'
@@ -1868,7 +1882,7 @@ document.addEventListener('click', (ev) => {
       });
       break;
     }
-    case 'ai-forget': AI.setKey(''); render(); toast('Ключ удалён'); break;
+    case 'ai-forget': AI.setKey(''); closeSheet(); render(); toast('Ключ удалён'); break;
     case 'b-sec': case 'b-sets': case 'b-rounds': case 'b-rest': case 'b-rrest': case 'b-del': case 'b-up': case 'b-add': case 'b-save': case 'b-delete':
       builderAct(act, el); break;
     default: break;
