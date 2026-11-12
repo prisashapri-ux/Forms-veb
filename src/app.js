@@ -41,6 +41,7 @@ const icon = {
   sound: I('<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>'),
   mute: I('<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>'),
   clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  bell: I('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
   flame: I('<path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2.5-5 0 2 1 3 2 3 0-3-1-5.5.5-8z"/>'),
   repeat: I('<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>'),
   scale: I('<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 9a5 5 0 0 1 8 0l-3 3"/>'),
@@ -826,9 +827,78 @@ function setsFromPrevious(name, beforeIso, exceptId) {
   return prev.e.sets.map((s) => ({ weight: s.weight, reps: s.reps, ...(s.level ? { level: s.level } : {}), isWarmup: !!s.isWarmup, isDone: false }));
 }
 
+/** Время с начала тренировки: «12:05» или «1:02:30». */
+function clockText(w) {
+  const sec = Math.max(0, Math.floor((Date.now() - toDate(w.startedAt)) / 1000));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = sec % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`;
+}
+setInterval(() => { const el = document.getElementById('w-clock'); const w = el && currentWorkout(); if (w?.startedAt) el.textContent = clockText(w); }, 1000);
+
+/** Файл .ics для календаря iPhone: событие на время тренировки и напоминания за час и в момент начала. */
+function workoutIcs(w) {
+  const t = toDate(w.date);
+  const f = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const escI = (x) => String(x).replace(/\\/g, '\\\\').replace(/[,;]/g, (c) => `\\${c}`).replace(/\n/g, '\\n');
+  const list = w.exercises.map((e) => { const ws = e.sets.filter((x) => !x.isWarmup); return `${e.name}${ws.length ? `: ${ws.length}×${ws[0].reps}${ws[0].weight ? ` по ${num(ws[0].weight, 1)} кг` : ''}` : ''}`; }).join('\n');
+  const url = `${location.origin}${location.pathname}#w-${w.id}`;
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Forma//RU', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+    `UID:${w.id}@forma`, `DTSTAMP:${f(new Date())}`, `DTSTART:${f(t)}`, `DTEND:${f(new Date(+t + 3600000))}`,
+    `SUMMARY:${escI(`Тренировка: ${w.title}`)}`, `DESCRIPTION:${escI(`${list}\n\nОткрыть в «Форме»: ${url}`)}`, `URL:${url}`,
+    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escI(`Через час тренировка: ${w.title}`)}`, 'TRIGGER:-PT1H', 'END:VALARM',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escI(`Пора на тренировку: ${w.title}`)}`, 'TRIGGER:PT0M', 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+}
+function remindWorkout(w) {
+  const file = new File([workoutIcs(w)], 'trenirovka.ics', { type: 'text/calendar' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file); a.download = 'trenirovka.ics';
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  toast('Открой загруженный файл и нажми «Добавить» — календарь напомнит за час и в начале');
+}
+
+/** Завершение: неотмеченные подходы убрать или засчитать, длительность по секундомеру. */
+function finishWorkout(w, how) {
+  const undone = w.exercises.reduce((a, e) => a + e.sets.filter((x) => !x.isDone && !x.isWarmup).length, 0);
+  if (!w.finishedAt && undone && !how) {
+    const done = w.exercises.reduce((a, e) => a + e.sets.filter((x) => x.isDone && !x.isWarmup).length, 0);
+    openSheet({
+      title: 'Не все подходы отмечены', left: 'Назад',
+      body: `<p style="margin:0">${done ? `Отмечено ${done} ${plural(done, 'подход', 'подхода', 'подходов')}, не отмечено ${undone}.` : `Ни один из ${undone} ${plural(undone, 'подхода', 'подходов', 'подходов')} не отмечен.`} Что сделать с неотмеченными?</p>
+        ${done ? `<button class="btn block" data-how="drop">Убрать неотмеченные</button>` : ''}
+        <button class="btn ${done ? 'secondary' : ''} block" data-how="all">Я сделал все, засчитать</button>
+        <button class="btn ghost block" data-how="back">Вернуться к тренировке</button>
+        <p class="small muted" style="margin:0">В статистику и прогресс весов идут только сделанные подходы.</p>`,
+      onOpen: (el) => el.addEventListener('click', (ev) => {
+        const h = ev.target.closest('[data-how]')?.dataset.how;
+        if (!h) return;
+        closeSheet();
+        if (h !== 'back') finishWorkout(w, h);
+      }),
+    });
+    return;
+  }
+  delete w.planned;
+  if (!w.finishedAt) {
+    if (how === 'drop') for (const e of w.exercises) e.sets = e.sets.filter((x) => x.isDone || x.isWarmup);
+    if (how === 'all') for (const e of w.exercises) for (const x of e.sets) x.isDone = true;
+    w.exercises = w.exercises.filter((e) => e.sets.some((x) => !x.isWarmup) || e.sets.length && how !== 'drop');
+    const now = new Date();
+    w.finishedAt = now.toISOString();
+    const mins = Math.round((now - toDate(w.startedAt || w.date)) / 60000);
+    if (w.durationMinutes == null && mins > 0 && mins <= 300) w.durationMinutes = mins;
+    delete w.startedAt;
+  }
+  ui.timer = null; drawTimer();
+  save(); go('diary'); toast('Тренировка сохранена');
+}
+
 function viewWorkout(id) {
   const w = state.workouts.find((x) => x.id === id);
   if (!w) return { title: 'Тренировка', top: topBack('#diary', 'Тренировка'), html: '<section class="card empty"><h2>Тренировка не найдена</h2><a class="btn" href="#diary">К дневнику</a></section>' };
+  // Открыл свежую тренировку = начал: секундомер стартует сам. Запланированная ждёт кнопки «Начать».
+  if (!w.finishedAt && !w.planned && !w.startedAt && Math.abs(Date.now() - toDate(w.date)) < 3 * 3600000) { w.startedAt = new Date().toISOString(); save(); }
   const blocks = w.exercises.map((e, ei) => {
     const g = groupOf(e.name);
     const prev = L.previousEntry(doneWs(), e.name, w.date, w.id);
@@ -867,7 +937,11 @@ function viewWorkout(id) {
   return {
     title: w.title,
     top: topBack('#diary', fmtDay(w.date), w.finishedAt ? `<button class="text-btn" data-act="del-workout">Удалить</button>` : `<button class="text-btn strong" data-act="finish">Готово</button>`),
-    html: `<section class="card stack">
+    html: `${w.planned ? `<section class="card plan-card"><div><b>Запланирована на ${esc(fmtDay(w.date))}, ${esc(toDate(w.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }))}</b>
+          <div class="small muted">Время можно поменять ниже. Напоминание придёт из календаря iPhone.</div></div>
+          <div class="grid2"><button class="btn" data-act="w-start">${icon.play} Начать сейчас</button><button class="btn secondary" data-act="w-remind">${icon.bell} Напомнить</button></div></section>`
+        : !w.finishedAt && w.startedAt ? `<section class="card w-clock-card"><span class="w-clock-ic">${icon.clock}</span><span class="grow"><span class="small muted">Идёт тренировка</span><b id="w-clock" class="num">${clockText(w)}</b></span><button class="btn small" data-act="finish">${icon.check} Завершить</button></section>` : ''}
+      <section class="card stack">
         <div class="field"><label for="w-title">Название</label><input id="w-title" data-win="title" value="${esc(w.title)}"></div>
         <div class="grid2"><div class="field"><label for="w-date">Дата и время</label><input id="w-date" type="datetime-local" data-win="date" value="${dateVal}"></div>
         <div class="field"><label for="w-dur">Минут</label><input id="w-dur" inputmode="numeric" data-win="durationMinutes" value="${w.durationMinutes ?? ''}" placeholder="—"></div></div>
@@ -1422,7 +1496,7 @@ function aiPlanCards(workouts, m, i) {
     const k = w ? dayKeyOf(w.date) : aiPlanDay(wk, j);
     return `<div class="ai-plan"><div class="head"><span class="ai-plan-date">${esc(dayLabel(k))}</span><b>${esc(wk.title)}</b></div>
       <ol>${wk.exercises.map((x) => `<li>${esc(x.name)} <span class="muted">${x.sets}×${x.reps[0] === x.reps[1] ? x.reps[0] : `${x.reps[0]}–${x.reps[1]}`}${x.weight ? ` · ${num(x.weight, 1)} кг` : ''}</span></li>`).join('')}</ol>
-      ${w ? `<a class="btn small" href="#w-${w.id}">${icon.check} В календаре · открыть</a>` : `<button class="btn small" data-act="ai-plan" data-i="${i}" data-j="${j}">${icon.calendar} В календарь на ${esc(dayLabel(k))}</button>`}</div>`;
+      ${w ? `<div class="btns"><a class="btn small" href="#w-${w.id}">${icon.check} В календаре · открыть</a><button class="btn small ghost" data-act="remind-id" data-id="${w.id}">${icon.bell} Напомнить</button></div>` : `<button class="btn small" data-act="ai-plan" data-i="${i}" data-j="${j}">${icon.calendar} В календарь на ${esc(dayLabel(k))}</button>`}</div>`;
   }).join('');
   const left = workouts.filter((_, j) => !saved(j)).length;
   return `${cards}${workouts.length > 1 && left > 1 ? `<button class="btn block" data-act="ai-plan-all" data-i="${i}">${icon.plus} Сохранить все ${left} в календарь</button>` : ''}`;
@@ -1991,22 +2065,18 @@ document.addEventListener('click', (ev) => {
     }
     case 'toggle-warm': S.isWarmup = !S.isWarmup; save(); render(); break;
     case 'toggle-done':
-      S.isDone = !S.isDone; if (S.isDone) delete w.planned; save(); render();
+      S.isDone = !S.isDone;
+      if (S.isDone && w.planned) { delete w.planned; if (dayKeyOf(w.date) === dayKeyOf(new Date())) { w.date = new Date().toISOString(); w.startedAt = w.date; } }
+      save(); render();
       if (S.isDone) startTimer(state.settings.restSeconds || 120);
       break;
     case 'cardio-photo': cardioPhoto(w, +el.dataset.e); break;
     case 'del-set': E.sets.splice(+el.dataset.s, 1); save(); render(); break;
     case 'add-set': { const last = E.sets.at(-1); E.sets.push(last ? { ...last, isWarmup: false, isDone: false } : { weight: 0, reps: 0, isWarmup: false, isDone: false }); save(); render(); break; }
-    case 'finish':
-      delete w.planned;
-      if (!w.finishedAt) {
-        w.finishedAt = new Date().toISOString();
-        const mins = Math.round(L.daysBetween(w.date, new Date()) * 1440);
-        if (w.durationMinutes == null && mins > 0 && mins <= 300) w.durationMinutes = mins;
-        w.exercises = w.exercises.filter((e) => e.sets.length);
-      }
-      ui.timer = null; drawTimer();
-      save(); go('diary'); toast('Тренировка сохранена'); break;
+    case 'finish': finishWorkout(w); break;
+    case 'w-start': delete w.planned; w.date = new Date().toISOString(); w.startedAt = w.date; save(); render(); toast('Тренировка началась'); break;
+    case 'w-remind': remindWorkout(w); break;
+    case 'remind-id': { const rw = state.workouts.find((x) => x.id === el.dataset.id); if (rw) remindWorkout(rw); break; }
     case 'del-workout':
       confirmSheet('Удалить тренировку?', `«${w.title}» от ${fmtDay(w.date)} удалится вместе со всеми подходами.`, 'Удалить', () => { state.workouts = state.workouts.filter((x) => x.id !== w.id); save(); go('diary'); });
       break;

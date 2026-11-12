@@ -663,3 +663,11 @@ button.back-btn { border: 0; background: transparent; padding: 0; font: inherit;
 /* Узкие экраны (iPhone SE, mini и уже): семь вкладок не должны налезать подписями друг на друга. */
 @media (max-width: 400px) { .tabbar a span { font-size: 9px; letter-spacing: -0.3px; } .tabbar a svg { width: 25px; height: 25px; } }
 @media (max-width: 345px) { .tabbar a span { font-size: 8px; letter-spacing: -0.4px; } .tabbar a svg { width: 23px; height: 23px; } }
+.plan-card { display: flex; flex-direction: column; gap: 10px; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--orange) 45%, transparent); }
+.plan-card .btn svg { width: 18px; height: 18px; }
+.w-clock-card { display: flex; align-items: center; gap: 12px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 52px); z-index: 4; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06); }
+.w-clock-card .grow { display: flex; flex-direction: column; }
+.w-clock-card b { font: 700 28px/1.1 var(--font-display); letter-spacing: 0.5px; color: var(--accent); }
+.w-clock-ic svg { width: 30px; height: 30px; color: var(--accent); }
+.w-clock-card .btn svg { width: 16px; height: 16px; }
+.ai-plan .btns { display: flex; flex-wrap: wrap; gap: 8px; }
