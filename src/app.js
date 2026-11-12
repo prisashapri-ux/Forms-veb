@@ -747,7 +747,7 @@ function machineSheet(m, { isNew = false, found = false, tip = '' } = {}) {
   openSheet({
     title: isNew ? 'Новый тренажёр' : m.name, left: 'Закрыть', right: 'Сохранить',
     body: `${found ? `<div class="gym-found">${icon.check} Это твой тренажёр</div>` : ''}
-      ${m.photo ? `<img class="gym-photo" src="${m.photo}" alt="Фото тренажёра">` : ''}
+      ${MACHINE_VIDEO[m.id] ? videoTag(MACHINE_VIDEO[m.id], m.name) : m.photo ? `<img class="gym-photo" src="${m.photo}" alt="Фото тренажёра">` : ''}
       ${m.about || m.brand || m.ddx ? `<p class="small" style="margin:0">${m.brand ? `<b>${esc(m.brand)}</b>${m.ddx ? ` · №${esc(m.ddx)} в DDX` : ''}<br>` : m.ddx ? `<b>№${esc(m.ddx)} в DDX</b><br>` : ''}${esc(m.about || '')}</p>` : ''}
       <div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(tip || L.setupHint(m).tip)}</span></div>
       <div class="section-caption" style="margin:4px 0 -4px">Мои уровни</div>
@@ -1014,9 +1014,12 @@ const EX_VIDEO = {
   'Жим гантелей лёжа': 'anim-db-bench.mp4',
   'Жим гантелей на наклонной скамье': 'anim-db-incline.mp4',
   'Жим от груди': 'anim-chest-press.mp4',
-  'Жим от груди широким хватом': 'anim-chest-press.mp4',
+  'Шаг и бег на дорожке': 'anim-treadmill.mp4',
 };
-const exVideo = (name) => (EX_VIDEO[name] ? `<video class="ex-video" src="${EX_VIDEO[name]}" autoplay loop muted playsinline preload="auto" aria-label="Анимация техники: ${esc(name)}"></video>` : '');
+/** Анимация конкретной модели тренажёра из базы зала: одна модель, одно видео. */
+const MACHINE_VIDEO = { 'ddx-zhim-grudi': 'anim-chest-press.mp4', 'ddx-begovaya': 'anim-treadmill.mp4' };
+const videoTag = (src, label) => `<video class="ex-video" src="${src}" autoplay loop muted playsinline preload="auto" aria-label="Анимация: ${esc(label)}"></video>`;
+const exVideo = (name) => (EX_VIDEO[name] ? videoTag(EX_VIDEO[name], name) : '');
 
 function exerciseInfo(name) {
   const ex = state.exercises.find((x) => x.name === name);
@@ -1024,7 +1027,7 @@ function exerciseInfo(name) {
   const hist = workoutsSorted().filter((w) => w.exercises.some((e) => e.name === name)).slice(0, 5);
   openSheet({
     title: name, left: 'Закрыть',
-    body: `${exVideo(name)}${(() => { const mm = machineFor(name); return mm?.photo ? `<img class="gym-photo" src="${mm.photo}" alt="${esc(mm.name)}"><div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(L.setupHint(mm).tip)}${L.machineSettingsText(mm) ? ` <b>Твои уровни: ${esc(L.machineSettingsText(mm))}.</b>` : ''}</span></div>` : EX_VIDEO[name] ? '' : `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>`; })()}
+    body: `${exVideo(name)}${(() => { const mm = machineFor(name); return mm?.photo ? `${EX_VIDEO[name] ? '' : `<img class="gym-photo" src="${mm.photo}" alt="${esc(mm.name)}">`}<div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(L.setupHint(mm).tip)}${L.machineSettingsText(mm) ? ` <b>Твои уровни: ${esc(L.machineSettingsText(mm))}.</b>` : ''}</span></div>` : EX_VIDEO[name] ? '' : `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>`; })()}
       <div class="card stack"><div class="cat" style="color:${GROUP_COLOR[groupOf(name)]}">${L.GROUPS[groupOf(name)]}</div>${info ? `<div class="muted small" style="margin-top:-6px">${esc(info.muscles)}</div>` : ''}
       ${info?.tips.length ? `<ul class="tips-list">${info.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : (machineFor(name)?.about ? `<span class="small">${esc(machineFor(name).about)}</span>` : '<span class="muted small">Подсказок по технике для этого упражнения нет.</span>')}</div>
       <div class="card"><div class="field"><label for="ex-note">Моя заметка: где тренажёр, настройки сиденья</label><textarea id="ex-note">${esc(ex?.note || '')}</textarea></div></div>
