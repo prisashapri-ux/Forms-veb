@@ -607,16 +607,28 @@ body.chat-mode.kb .ai-composer { padding-bottom: 8px; }
 .gym-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .gym-card { border: 0; background: var(--card); border-radius: 18px; padding: 8px 8px 12px; text-align: left; display: flex; flex-direction: column; gap: 3px; min-width: 0; font: inherit; color: inherit; }
 .gym-card .pic { aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden; display: grid; place-items: center; background: color-mix(in srgb, var(--g) 14%, var(--card)); margin-bottom: 6px; }
-.gym-card .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gym-card .pic:has(img) { background: #f1f1f1; }
+.gym-card .pic img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.thumb.photo { background: #f1f1f1; }
+.thumb.photo img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .gym-card .pic .thumb { width: 64px; height: 64px; background: none; }
 .gym-card b { font-size: 15px; line-height: 1.25; padding: 0 4px; overflow-wrap: anywhere; }
 .gym-card .small { padding: 0 4px; overflow-wrap: anywhere; }
 .gym-card .set { color: var(--teal); }
-.gym-photo { width: 100%; max-height: 240px; object-fit: cover; border-radius: 14px; display: block; }
+.gym-photo { width: 100%; max-height: 280px; object-fit: contain; background: #f1f1f1; border-radius: 14px; display: block; }
 .gym-found { display: flex; align-items: center; gap: 8px; color: var(--green); font-weight: 600; }
 .gym-found svg { width: 20px; height: 20px; }
 .my-machine { border: 0; width: 100%; display: flex; align-items: center; gap: 10px; background: color-mix(in srgb, var(--teal) 10%, var(--card)); border-radius: 12px; padding: 6px 10px 6px 6px; margin: 6px 0 2px; font: inherit; font-size: 14px; color: inherit; text-align: left; }
-.my-machine img { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; flex: none; }
+.my-machine img { width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #f1f1f1; flex: none; }
+.my-machine .grow { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.my-machine .m-levels { color: var(--teal); font-weight: 600; font-size: 15px; }
+.my-machine .m-hint { color: var(--muted); font-size: 13px; line-height: 1.3; }
+.my-machine .m-hint u { color: var(--teal); text-decoration: none; font-weight: 600; }
+.m-tip { display: flex; gap: 10px; align-items: flex-start; background: color-mix(in srgb, var(--teal) 10%, var(--card)); border-radius: 12px; padding: 10px 12px; font-size: 15px; line-height: 1.35; }
+.m-tip svg { width: 20px; height: 20px; color: var(--teal); flex: none; margin-top: 1px; }
+.m-adjust { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 8px; }
+.m-adjust label { display: flex; flex-direction: column; align-items: center; gap: 4px; background: var(--card); border-radius: 12px; padding: 8px 6px; font-size: 13px; color: var(--muted); }
+.m-adjust input { width: 100%; border: 0; background: var(--fill); border-radius: 8px; text-align: center; font: 600 20px var(--font); padding: 6px 2px; color: var(--fg); }
 .my-machine > svg { width: 16px; height: 16px; color: var(--muted); flex: none; }
 .my-machine > svg:first-child { width: 22px; height: 22px; color: var(--teal); margin: 0 7px; }
 .sheet .body > * { flex-shrink: 0; }

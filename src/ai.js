@@ -1,6 +1,6 @@
 // ИИ-советник через DeepSeek. Ключ хранится только в этом браузере (localStorage), в резервную копию не попадает.
 // Запрос уходит из браузера прямо в DeepSeek, без промежуточного сервера.
-import { num, GROUPS } from './logic.js';
+import { num, GROUPS, machineSettingsText } from './logic.js';
 
 const KEY = 'forma.deepseek.key';
 const MODEL = 'forma.deepseek.model';
@@ -134,7 +134,7 @@ export function machineRefs(machines) {
   const out = [{ type: 'text', text: `Мои сохранённые тренажёры («Мой зал»). Если на фото выше один из них, так и скажи («это твой …»), используй его упражнение и мои настройки:` }];
   list.forEach((x, i) => {
     const exs = x.exercises?.length ? `, упражнения: ${x.exercises.map((e) => e.name).join('; ')}` : `, упражнение «${x.exercise}»`;
-    out.push({ type: 'text', text: `Тренажёр ${i + 1}: ${x.name}${x.brand ? ` (${x.brand})` : ''}${exs}${x.settings ? `, мои настройки: ${x.settings}` : ''}` });
+    out.push({ type: 'text', text: `Тренажёр ${i + 1}: ${x.name}${x.brand ? ` (${x.brand})` : ''}${exs}${machineSettingsText(x) ? `, мои настройки: ${machineSettingsText(x)}` : ''}` });
     out.push({ type: 'image_url', image_url: { url: x.photo, detail: 'low' } });
   });
   return out;

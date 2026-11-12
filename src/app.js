@@ -82,6 +82,9 @@ const latestFull = () => fullMeasurements().at(-1) || null;
 /** Квадратная картинка упражнения в цвете группы мышц. */
 function thumb(name, { animate = false, size = '' } = {}) {
   const g = groupOf(name);
+  // Упражнение на тренажёре из зала: вместо схемы-человечка настоящее фото тренажёра.
+  const pic = machineFor(name)?.photo;
+  if (pic) return `<span class="thumb photo ${size}"><img src="${pic}" alt="" loading="lazy"></span>`;
   return `<span class="thumb ${size}" style="--g:${GROUP_COLOR[g] || 'var(--accent)'}">${figureSVG(name, g, { animate, frame: animate ? null : 1 })}</span>`;
 }
 /** Диапазон повторов: из программы или из своей тренировки конструктора. */
@@ -520,10 +523,16 @@ function viewDiary() {
   return { title: 'Дневник', top: topTitle('Дневник', right), html: `${demoBanner()}<div class="section-title" style="margin-top:0">Эта неделя</div>${weekRings()}${calendarCard()}${advisorCard()}${next}${actions}${mineHtml}${list}` };
 }
 
-function newWorkout(fromProgram = null, dayIndex = 0) {
+/** day: ключ дня «ГГГГ-ММ-ДД» из календаря; время берётся текущее, дата из календаря. */
+function newWorkout(fromProgram = null, dayIndex = 0, day = null) {
   if (state.demo) clearDemo(false);
   const w = fromProgram ? L.workoutFromProgram(fromProgram, dayIndex, state.workouts, groupOf)
     : { id: L.uid(), date: new Date().toISOString(), title: 'Тренировка', note: '', durationMinutes: null, programID: null, programDay: null, finishedAt: null, exercises: [] };
+  if (day && /^\d{4}-\d{2}-\d{2}$/.test(day) && day !== dayKeyOf(new Date())) {
+    const [y, m, d] = day.split('-').map(Number);
+    const at = new Date(); at.setFullYear(y, m - 1, d);
+    w.date = at.toISOString();
+  }
   state.workouts.push(w);
   save();
   go(`w-${w.id}`);
@@ -581,13 +590,14 @@ function viewCalendar() {
 }
 function calDay(k) {
   const ws = workoutsByDay().get(k) || [];
-  if (ws.length === 1) { go(`w-${ws[0].id}`); return; }
   const date = new Date(`${k}T12:00:00`);
   const title = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+  const today = dayKeyOf(new Date());
+  const label = k === today ? 'Начать тренировку' : k > today ? 'Запланировать тренировку' : 'Записать тренировку за этот день';
   openSheet({
     title: title[0].toUpperCase() + title.slice(1), left: 'Закрыть',
-    body: ws.length ? `<section class="card list thumbs">${ws.map(workoutRow).join('')}</section>`
-      : `<p class="muted" style="margin:0">В этот день тренировки не было.</p>${k === dayKeyOf(new Date()) ? '<button class="btn block" data-act="new-workout">Начать тренировку</button>' : ''}`,
+    body: `${ws.length ? `<section class="card list thumbs">${ws.map(workoutRow).join('')}</section>` : `<p class="muted" style="margin:0">${k > today ? 'На этот день пока ничего нет.' : 'В этот день тренировки не было.'}</p>`}
+      <button class="btn block" data-act="new-workout" data-day="${k}">${icon.plus} ${label}</button>`,
   });
 }
 
@@ -631,7 +641,7 @@ function viewGym() {
   const cards = list.length ? `<div class="gym-grid" id="gym-grid">${list.map((m) => `<button class="gym-card" data-act="gym-open" data-id="${m.id}" data-hay="${esc(hay(m))}" ${q && !hay(m).includes(q) ? 'hidden' : ''}>
       <span class="pic" style="--g:${GROUP_COLOR[m.group] || 'var(--accent)'}">${m.photo ? `<img src="${m.photo}" alt="" loading="lazy">` : thumb(m.exercise)}</span>
       <b>${esc(m.name)}</b><span class="small muted">${m.exercises?.length > 1 ? `${m.exercises.length} ${plural(m.exercises.length, 'упражнение', 'упражнения', 'упражнений')}` : esc(m.exercise !== m.name ? m.exercise : L.GROUPS[m.group])}${m.brand ? ` · ${esc(m.brand)}` : ''}</span>
-      ${m.settings ? `<span class="small set">${esc(m.settings)}</span>` : ''}</button>`).join('')}</div><p class="small muted" id="gym-none" ${q && !list.some((m) => hay(m).includes(q)) ? '' : 'hidden'} style="text-align:center">Ничего не нашлось</p>`
+      ${L.machineSettingsText(m) ? `<span class="small set">${esc(L.machineSettingsText(m))}</span>` : ''}</button>`).join('')}</div><p class="small muted" id="gym-none" ${q && !list.some((m) => hay(m).includes(q)) ? '' : 'hidden'} style="text-align:center">Ничего не нашлось</p>`
     : all.length ? '<p class="small muted" style="text-align:center">В этой группе тренажёров нет</p>'
     : `<section class="card empty"><h2>${gymSyncing ? 'Загружаю тренажёры…' : 'Тренажёры не загрузились'}</h2><p>${gymSyncing ? 'Это пара секунд.' : 'Нужен интернет. Проверь связь и попробуй ещё раз.'}</p>${gymSyncing ? '' : '<button class="btn" data-act="gym-sync">Загрузить ещё раз</button>'}</section>`;
   const files = all.length ? `<div class="section-title">Ещё</div><section class="card list">
@@ -678,13 +688,15 @@ function machineSheet(m, { isNew = false, found = false, tip = '' } = {}) {
     body: `${found ? `<div class="gym-found">${icon.check} Это твой тренажёр</div>` : ''}
       ${m.photo ? `<img class="gym-photo" src="${m.photo}" alt="Фото тренажёра">` : ''}
       ${m.about || m.brand || m.ddx ? `<p class="small" style="margin:0">${m.brand ? `<b>${esc(m.brand)}</b>${m.ddx ? ` · №${esc(m.ddx)} в DDX` : ''}<br>` : m.ddx ? `<b>№${esc(m.ddx)} в DDX</b><br>` : ''}${esc(m.about || '')}</p>` : ''}
-      ${tip ? `<p class="small" style="margin:0"><b>Как настроить:</b> ${esc(tip)}</p>` : ''}
+      <div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(tip || L.setupHint(m).tip)}</span></div>
+      <div class="section-caption" style="margin:4px 0 -4px">Мои уровни</div>
+      <div class="m-adjust">${(() => { const f = L.setupHint(m).fields; const a = m.adjust || {}; return L.ADJUST.filter(([k]) => !f.length || f.includes(k) || a[k]).map(([k, t]) => `<label><span>${t}</span><input data-adj="${k}" inputmode="text" maxlength="12" placeholder="—" value="${esc(a[k] || '')}"></label>`).join(''); })()}</div>
       ${m.exercises?.length ? `<div class="section-caption" style="margin:4px 0 -4px">Упражнения</div><div class="card list m-exs">${m.exercises.map((x, i) => `<div class="item">${thumb(x.name)}<span class="grow"><span class="title">${esc(x.name)}</span><div class="sub">${esc(x.muscle || L.GROUPS[x.group])}${(() => { const r = lastResult(x.name); return r ? ` · ${esc(r)}` : ''; })()}</div></span><button class="icon-btn" data-m-ex="${i}" aria-label="Добавить в тренировку: ${esc(x.name)}">${icon.plus}</button></div>`).join('')}</div>` : ''}
       ${last ? `<p class="small muted" style="margin:0">Прошлый раз ${esc(last)}</p>` : ''}
       <div class="field"><label for="m-name">Название</label><input id="m-name" value="${esc(m.name)}" maxlength="60" placeholder="Например, жим ногами 45°"></div>
       <div class="field"><label for="m-ex">Упражнение</label><input id="m-ex" list="m-ex-list" value="${esc(m.exercise)}" maxlength="60"><datalist id="m-ex-list">${state.exercises.map((e) => `<option value="${esc(e.name)}">`).join('')}</datalist></div>
       <div class="field"><label for="m-group">Мышцы</label><select id="m-group">${groups}</select></div>
-      <div class="field"><label for="m-set">Мои настройки</label><textarea id="m-set" rows="2" maxlength="300" placeholder="Сиденье 4, спинка 2, валик на 3-й дырке">${esc(m.settings || '')}</textarea></div>
+      <div class="field"><label for="m-set">Заметка</label><textarea id="m-set" rows="2" maxlength="300" placeholder="Например, валик на 3-й дырке, ручки узкие">${esc(m.settings || '')}</textarea></div>
       <button class="btn block" data-m-workout>${icon.plus} В тренировку</button>
       ${isNew ? '' : '<button class="btn danger block" data-m-del>Удалить тренажёр</button>'}`,
     onRight: (el) => { if (saveMachine(el, m, isNew)) { closeSheet(); render(); toast(isNew ? 'Тренажёр сохранён' : 'Сохранено'); } },
@@ -715,7 +727,7 @@ function saveMachine(el, m, isNew) {
   if (!name) { toast('Напиши название'); el.querySelector('#m-name').focus(); return null; }
   const exName = el.querySelector('#m-ex').value.trim() || name;
   const group = el.querySelector('#m-group').value;
-  const clean = L.cleanMachine({ ...m, id: isNew ? L.uid() : m.id, name, exercise: exName, group, settings: el.querySelector('#m-set').value, created: m.created || Date.now() });
+  const clean = L.cleanMachine({ ...m, id: isNew ? L.uid() : m.id, name, exercise: exName, group, settings: el.querySelector('#m-set').value, adjust: { ...(m.adjust || {}), ...Object.fromEntries([...el.querySelectorAll('[data-adj]')].map((i) => [i.dataset.adj, i.value])) }, created: m.created || Date.now() });
   const finalEx = aiEnsureExercise({ name: clean.exercise, group: clean.group });
   clean.exercise = finalEx;
   if (isNew) machines().push(clean); else { const i = machines().findIndex((x) => x.id === m.id); if (i >= 0) machines()[i] = clean; else machines().push(clean); }
@@ -737,16 +749,20 @@ function cardioPhoto(w, ei) {
     try {
       const { image } = await aiPhotoFrom(f);
       const r = await AI.readCardioDisplay(image, E.name);
-      let S = [...E.sets].reverse().find((x) => !x.isDone && !x.weight && !x.reps);
-      if (!S) { S = { weight: 0, reps: 0, isWarmup: false, isDone: false }; E.sets.push(S); }
+      // Пока ИИ читал табло, данные могли перечитаться: берём тренировку и упражнение заново по id и имени.
+      const cw = state.workouts.find((x) => x.id === w.id) || w;
+      const CE = cw.exercises[ei]?.name === E.name ? cw.exercises[ei] : cw.exercises.find((x) => x.name === E.name) || E;
+      // Каждое фото табло = новый подход. Пустой незаполненный подход используем, заполненные не трогаем.
+      let S = CE.sets.find((x) => !x.isDone && !x.weight && !x.reps);
+      if (!S) { S = { weight: 0, reps: 0, isWarmup: false, isDone: false }; CE.sets.push(S); }
       if (r.minutes != null) S.weight = r.minutes;
       if (r.km != null) S.reps = Math.round(r.km);
       if (r.level != null) S.level = r.level;
       S.isDone = true;
       const line = `${E.name}: ${[r.minutes != null ? `${num(r.minutes, 1)} мин` : '', r.km != null ? `${num(r.km, 2)} км` : '', r.level != null ? `уровень ${num(r.level, 1)}` : '', r.calories != null ? `${r.calories} ккал` : ''].filter(Boolean).join(', ')}`;
-      w.note = (w.note ? `${w.note}\n` : '') + line;
-      save();
-      toast(`Записал: ${line.slice(E.name.length + 2)}`);
+      cw.note = (cw.note ? `${cw.note}\n` : '') + line;
+      save(); flush();
+      toast(`Подход ${CE.sets.indexOf(S) + 1} записан: ${line.slice(E.name.length + 2)}`);
     } catch (e) {
       toast(e.message || 'Не получилось прочитать табло');
     } finally {
@@ -790,7 +806,7 @@ function viewWorkout(id) {
         <button class="name" data-act="exercise-info" data-name="${esc(e.name)}">${esc(e.name)}<small>${L.GROUPS[g]}${range ? ` · цель ${range[0]}–${range[1]} повт.` : ''}${note ? ` · ${esc(note)}` : ''}</small></button>
         <button class="icon-btn" data-act="ex-menu" data-e="${ei}" aria-label="Действия с упражнением">${icon.more}</button></div>
       <div class="ex-meta">${esc(prevText)}</div>
-      ${(() => { const mm = machineFor(e.name); return mm ? `<button class="my-machine" data-act="gym-open" data-id="${mm.id}">${mm.photo ? `<img src="${mm.photo}" alt="">` : icon.camera}<span class="grow"><b>${esc(mm.name)}</b>${mm.settings ? `<span class="muted"> · ${esc(mm.settings)}</span>` : ''}</span>${icon.chev}</button>` : ''; })()}
+      ${(() => { const mm = machineFor(e.name); if (!mm) return ''; const st = L.machineSettingsText(mm); return `<button class="my-machine" data-act="gym-open" data-id="${mm.id}">${mm.photo ? `<img src="${mm.photo}" alt="">` : icon.camera}<span class="grow"><b>${esc(mm.name)}</b>${st ? `<span class="m-levels">${esc(st)}</span>` : `<span class="m-hint">${esc(L.setupHint(mm).tip)} <u>Запиши свои уровни</u></span>`}</span>${icon.chev}</button>`; })()}
       ${sug ? `<div class="hint"><div class="grow">Сегодня: <b>${esc(sug.headline)}</b><br><span class="muted small">${esc(sug.reason)}</span></div><button class="btn small secondary" data-act="apply-sug" data-e="${ei}">Подставить</button></div>` : ''}
       <div class="sets ${isCardio ? 'cardio' : ''}"><div class="set-row head"><span>№</span><span>${isCardio ? 'мин' : 'кг'}</span><span>${isCardio ? 'км' : timed ? 'сек' : 'повт'}</span>${isCardio ? '<span>уровень</span>' : ''}<span></span><span></span></div>${rows}</div>
       ${isCardio ? `<div class="cardio-btns"><button class="btn ghost" data-act="add-set" data-e="${ei}">${icon.plus} Подход</button>
@@ -865,9 +881,9 @@ function exerciseInfo(name) {
   const hist = workoutsSorted().filter((w) => w.exercises.some((e) => e.name === name)).slice(0, 5);
   openSheet({
     title: name, left: 'Закрыть',
-    body: `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>
+    body: `${(() => { const mm = machineFor(name); return mm?.photo ? `<img class="gym-photo" src="${mm.photo}" alt="${esc(mm.name)}"><div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(L.setupHint(mm).tip)}${L.machineSettingsText(mm) ? ` <b>Твои уровни: ${esc(L.machineSettingsText(mm))}.</b>` : ''}</span></div>` : `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>`; })()}
       <div class="card stack"><div class="cat" style="color:${GROUP_COLOR[groupOf(name)]}">${L.GROUPS[groupOf(name)]}</div>${info ? `<div class="muted small" style="margin-top:-6px">${esc(info.muscles)}</div>` : ''}
-      ${info?.tips.length ? `<ul class="tips-list">${info.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '<span class="muted small">Подсказок по технике для этого упражнения нет.</span>'}</div>
+      ${info?.tips.length ? `<ul class="tips-list">${info.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : (machineFor(name)?.about ? `<span class="small">${esc(machineFor(name).about)}</span>` : '<span class="muted small">Подсказок по технике для этого упражнения нет.</span>')}</div>
       <div class="card"><div class="field"><label for="ex-note">Моя заметка: где тренажёр, настройки сиденья</label><textarea id="ex-note">${esc(ex?.note || '')}</textarea></div></div>
       ${hist.length ? `<div class="section-caption">Последние разы</div><div class="card list">${hist.map((w) => { const e = w.exercises.find((x) => x.name === name); return `<div class="item"><span class="grow"><span class="title">${fmtDay(w.date)}</span><div class="sub tabular">${isHomeWorkout(w) ? e.sets.map((s) => `${s.reps} с`).join(', ') : L.workingSets(e).map((s) => setText(s, name, w)).join(', ') || '—'}</div></span></div>`; }).join('')}</div>` : ''}
       <a class="btn secondary block" href="#ex-${encodeURIComponent(name)}">Прогресс по упражнению</a>
@@ -1353,7 +1369,7 @@ function aiExCard(x, m, i, k) {
     <div class="btns">${w ? `<a class="btn small" href="#w-${w.id}">${icon.check} Открыть тренировку</a>` : `<button class="btn small" data-act="ai-ex-workout" data-i="${i}" data-k="${k}">${icon.plus} В тренировку</button>`}
       ${known ? '' : `<button class="btn small ghost" data-act="ai-ex-add" data-i="${i}" data-k="${k}">В мои упражнения</button>`}
       ${mine ? '' : hadPhoto ? `<button class="btn small ghost" data-act="ai-ex-gym" data-i="${i}" data-k="${k}">${icon.camera} В Мой зал</button>` : ''}</div>
-    ${mine ? `<button class="my-machine" data-act="gym-open" data-id="${mine.id}">${mine.photo ? `<img src="${mine.photo}" alt="">` : icon.camera}<span class="grow"><b>Твой: ${esc(mine.name)}</b>${mine.settings ? `<span class="muted"> · ${esc(mine.settings)}</span>` : ''}</span>${icon.chev}</button>` : ''}</div>`;
+    ${mine ? `<button class="my-machine" data-act="gym-open" data-id="${mine.id}">${mine.photo ? `<img src="${mine.photo}" alt="">` : icon.camera}<span class="grow"><b>Твой: ${esc(mine.name)}</b>${L.machineSettingsText(mine) ? `<span class="muted"> · ${esc(L.machineSettingsText(mine))}</span>` : ''}</span>${icon.chev}</button>` : ''}</div>`;
 }
 
 function aiExFrom(el) {
@@ -1585,7 +1601,7 @@ function viewAnalytics() {
   }).join('');
   // Тело и тренировки.
   let bodyVs = '';
-  const bodyPts = state.measurements.filter((m) => !m.source);
+  const bodyPts = state.measurements.filter((m) => !m.source).sort((a, b) => a.day.localeCompare(b.day));
   if (bodyPts.length >= 2) {
     const first = bodyPts[0];
     const mk = (k) => bodyPts.filter((m) => m.values[k] != null && first.values[k] != null).map((m) => ({ date: m.day, value: m.values[k] - first.values[k] }));
@@ -1813,7 +1829,7 @@ document.addEventListener('click', (ev) => {
     case 'body-metric': ui.bodyMetric = el.dataset.m; render(); break;
     case 'seg-mode': ui.segMode = el.dataset.m; render(); break;
     case 'measurement': measurementSheet(el.dataset.day); break;
-    case 'new-workout': newWorkout(); break;
+    case 'new-workout': closeSheet(); newWorkout(null, 0, el.dataset.day || null); break;
     case 'gym-find': gymFind(); break;
     case 'gym-sync': syncGymBase(true); break;
     case 'gym-group': ui.gymG = el.dataset.g; render(); break;
@@ -1978,13 +1994,18 @@ async function start() {
     // Новая версия сайта ставится в фоне; как только она взяла управление, перезагружаемся один раз.
     const hadController = !!navigator.serviceWorker.controller;
     let reloaded = false;
+    // Не перезагружаемся посреди дела: ИИ читает табло, открыт таймер, чат или окно, идёт тренировка.
+    // Тогда обновление ждёт, пока приложение свернут или откроют другой экран.
+    const busyNow = () => !!(player.el || aiState.busy || cardioBusy || gymBusy || sheetClose || route().name === 'w');
+    const tryReload = () => { if (pendingReload && !reloaded && !busyNow()) { reloaded = true; flush(); location.reload(); } };
+    let pendingReload = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hadController || reloaded) return;
-      reloaded = true;
+      if (!hadController || pendingReload) return;
+      pendingReload = true;
       flush();
-      if (player.el || aiState.busy) return;
-      location.reload();
+      tryReload();
     });
+    addEventListener('hashchange', () => setTimeout(tryReload, 300));
     navigator.serviceWorker.register('./sw.js').then((reg) => {
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
     }).catch(() => {});

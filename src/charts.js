@@ -113,7 +113,7 @@ export function dualChart(a, b, o = {}) {
     const v = pts.map((p) => p.value);
     return niceTicks(Math.min(0, ...v), Math.max(0.5, ...v), 4);
   };
-  const A = axis(a.points), B = axis(b.points);
+  const A = axis([...a.points, ...a.series.flatMap((x) => x.points)]), B = axis(b.points);
   const Ya = (v) => pad.t + (1 - (v - A.lo) / (A.hi - A.lo)) * (H - pad.t - pad.b);
   const Yb = (v) => pad.t + (1 - (v - B.lo) / (B.hi - B.lo)) * (H - pad.t - pad.b);
   let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label || 'График'}">`;
@@ -121,7 +121,8 @@ export function dualChart(a, b, o = {}) {
     s += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${Ya(t)}" y2="${Ya(t)}" stroke="var(--grid)"/>`;
     s += `<text x="${pad.l - 6}" y="${Ya(t) + 3.5}" text-anchor="end" class="tick">${t > 0 ? '+' : ''}${num(t, digitsFor(A.step))}</text>`;
   }
-  for (const t of B.ticks) s += `<text x="${W - pad.r + 6}" y="${Yb(t) + 3.5}" class="tick">${b.format ? b.format(t) : num(t, 0)}</text>`;
+  // Правая ось: только ноль и верх, чтобы подписи не спорили с сеткой левой оси.
+  if (b.points.length) for (const t of [B.lo, B.hi]) s += `<text x="${W - pad.r + 6}" y="${Yb(t) + 3.5}" class="tick">${b.format ? b.format(t) : num(t, 0)}</text>`;
   const bw = Math.max(4, (W - pad.l - pad.r) / Math.max(12, b.points.length * 1.6));
   for (const p of b.points) {
     const x = X(toDate(p.date).getTime());

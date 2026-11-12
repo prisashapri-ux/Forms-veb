@@ -270,3 +270,22 @@ test('ключ DeepSeek чистится и проверяется', async () =>
   assert.equal(ok.state, 'ok'); assert.equal(ok.balance, '5.00 USD');
   assert.equal((await AI.checkKey('sk-x', async () => { throw new TypeError('x'); })).state, 'net');
 });
+
+test('настройки тренажёра: уровни, подсказка и слияние базы', () => {
+  const m = L.cleanMachine({ name: 'Разгибание голени рычажное', adjust: { seat: ' 4 ', roller: '3', junk: 'x', back: '' } });
+  assert.deepEqual(m.adjust, { seat: '4', roller: '3' });
+  assert.equal(L.machineSettingsText({ ...m, settings: 'ручки узкие' }), 'Сиденье 4 · Валик 3 · ручки узкие');
+  assert.match(L.setupHint(m).tip, /колено/);
+  assert.match(L.setupHint({ name: 'Кроссовер', exercises: [{ name: 'Отведение плеча в кроссовере' }] }).tip, /блок/i);
+  const merged = L.mergeMachines([{ ...m, id: 'a' }], { machines: [{ name: 'Разгибание голени рычажное', about: 'новое' }] }).machines;
+  assert.deepEqual(merged[0].adjust, { seat: '4', roller: '3' });
+  assert.equal(merged[0].about, 'новое');
+});
+
+test('график «Тело и тренировки» держит линии внутри рамки', async () => {
+  const { dualChart } = await import('../src/charts.js');
+  const svg = dualChart({ points: [], series: [{ color: 'red', points: [{ date: '2026-07-01', value: 0 }, { date: '2026-09-01', value: 1.6 }, { date: '2026-11-01', value: -2.4 }] }] }, { points: [] });
+  const ys = [...svg.matchAll(/<circle cx="[\d.]+" cy="([-\d.]+)"/g)].map((x) => +x[1]);
+  assert.equal(ys.length, 3);
+  for (const y of ys) assert.ok(y >= 0 && y <= 170, `y=${y}`);
+});
