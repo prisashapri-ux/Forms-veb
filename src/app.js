@@ -75,6 +75,8 @@ const volumeOf = (w) => L.workoutVolume(w, groupOf);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const $ = (sel, root = document) => root.querySelector(sel);
 const parseNum = (s) => { const v = Number(String(s).replace(',', '.').replace(/\s/g, '')); return Number.isFinite(v) ? v : null; };
+// Запланированные тренировки (сохранены на день, но ещё не начаты) не идут в статистику и прогрессию.
+const doneWs = () => state.workouts.filter((w) => !w.planned);
 const workoutsSorted = () => [...state.workouts].sort((a, b) => (a.date < b.date ? 1 : -1));
 const fullMeasurements = () => state.measurements.filter((m) => !m.isPartial && !m.source);
 const latestFull = () => fullMeasurements().at(-1) || null;
@@ -451,7 +453,7 @@ function weekRings() {
   const program = L.programById(state.settings.activeProgram);
   const perWeek = program?.perWeek || 3;
   const ws0 = L.weekStart(new Date());
-  const week = state.workouts.filter((w) => toDate(w.date) >= ws0 && w.exercises.length);
+  const week = doneWs().filter((w) => toDate(w.date) >= ws0 && w.exercises.length);
   const count = week.length;
   const mins = week.reduce((a, w) => a + (w.durationMinutes || 0), 0);
   const sets = week.reduce((a, w) => a + L.workoutSetCount(w), 0);
@@ -471,7 +473,7 @@ function workoutRow(w) {
   return `<a class="item" href="#w-${w.id}">${first ? thumb(first) : `<span class="thumb">${icon.dumbbell}</span>`}
     <span class="grow"><span class="title"><b>${esc(w.title)}</b></span>
       <div class="sub">${w.exercises.map((e) => esc(e.name)).slice(0, 3).join(', ') || 'Без упражнений'}${w.exercises.length > 3 ? ` и ещё ${w.exercises.length - 3}` : ''}</div>
-      <div class="stat-line">${home ? `<span>${w.durationMinutes || 0} мин</span><span>${w.exercises.length} ${plural(w.exercises.length, 'упражнение', 'упражнения', 'упражнений')}</span>` : workoutStats(w).map((x) => `<span>${x}</span>`).join('')}${!w.finishedAt ? '<span class="badge normal">идёт</span>' : ''}</div></span>
+      <div class="stat-line">${home ? `<span>${w.durationMinutes || 0} мин</span><span>${w.exercises.length} ${plural(w.exercises.length, 'упражнение', 'упражнения', 'упражнений')}</span>` : workoutStats(w).map((x) => `<span>${x}</span>`).join('')}${w.planned ? '<span class="badge plan">запланирована</span>' : !w.finishedAt ? '<span class="badge normal">идёт</span>' : ''}</div></span>
     <span class="value small">${fmtDay(w.date, false)}</span>${icon.chev}</a>`;
 }
 
@@ -564,7 +566,8 @@ function monthGrid(base, byDay, small = false) {
     const k = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const ws = byDay.get(k) || [];
     const home = ws.length && ws.every((w) => isHomeWorkout(w));
-    cells += `<button class="cal-d ${ws.length ? (home ? 'has home' : 'has') : ''} ${k === today ? 'today' : ''}" data-act="cal-day" data-day="${k}" aria-label="${d}${ws.length ? `, тренировок: ${ws.length}` : ''}">${d}</button>`;
+    const plan = ws.length && ws.every((w) => w.planned);
+    cells += `<button class="cal-d ${plan ? 'plan' : ws.length ? (home ? 'has home' : 'has') : ''} ${k === today ? 'today' : ''}" data-act="cal-day" data-day="${k}" aria-label="${d}${ws.length ? `, тренировок: ${ws.length}` : ''}">${d}</button>`;
   }
   return `<div class="cal ${small ? 'small' : ''}"><div class="cal-w">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((t) => `<span>${t}</span>`).join('')}</div><div class="cal-g">${cells}</div></div>`;
 }
@@ -585,20 +588,63 @@ function viewCalendar() {
   const base = calBase();
   const months = [];
   for (let i = 0; i < 6; i++) { const d = new Date(base); d.setMonth(d.getMonth() - i); months.push(d); }
-  const total = (d) => { const p = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; return [...byDay.keys()].filter((k) => k.startsWith(p)).length; };
-  return { title: 'Календарь', top: topBack('#diary', 'Календарь'), html: months.map((d) => `<div class="section-title">${monthTitle(d)}${total(d) ? ` · ${total(d)} ${plural(total(d), 'день', 'дня', 'дней')}` : ''}</div><section class="card cal-card">${monthGrid(d, byDay)}</section>`).join('') + '<p class="small muted" style="text-align:center">Оранжевым отмечены дни в зале, розовым дома. Нажми на день, чтобы открыть тренировку.</p>' };
+  const total = (d) => { const p = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; return [...byDay.entries()].filter(([k, ws]) => k.startsWith(p) && ws.some((w) => !w.planned)).length; };
+  return { title: 'Календарь', top: topBack('#diary', 'Календарь'), html: months.map((d) => `<div class="section-title">${monthTitle(d)}${total(d) ? ` · ${total(d)} ${plural(total(d), 'день', 'дня', 'дней')}` : ''}</div><section class="card cal-card">${monthGrid(d, byDay)}</section>`).join('') + '<p class="small muted" style="text-align:center">Оранжевым отмечены дни в зале, розовым дома, оранжевым кольцом запланированные. Нажми на любой день, чтобы открыть тренировку или сохранить новую.</p>' };
 }
 function calDay(k) {
   const ws = workoutsByDay().get(k) || [];
   const date = new Date(`${k}T12:00:00`);
   const title = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
   const today = dayKeyOf(new Date());
-  const label = k === today ? 'Начать тренировку' : k > today ? 'Запланировать тренировку' : 'Записать тренировку за этот день';
+  const program = L.programById(state.settings.activeProgram);
+  const last = doneWs().sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+  const opt = (kind, id, name, sub, ic, color) => `<button class="item" data-act="plan-day" data-day="${k}" data-kind="${kind}" data-id="${esc(String(id ?? ''))}"><span class="thumb" style="--g:${color}">${ic}</span><span class="grow"><span class="title">${esc(name)}</span>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</span><span class="add-ic">${icon.plus}</span></button>`;
+  const opts = [
+    ...(state.templates || []).filter((t) => t.kind === 'gym' && t.items.length).map((t) => opt('tpl', t.id, t.title, t.items.map((x) => x.exercise).slice(0, 3).join(', '), icon.dumbbell, 'var(--orange)')),
+    ...(program ? (() => { const d = L.nextDay(program, doneWs()); return [opt('program', d, program.days[d].title, `${program.title} · день ${d + 1}`, icon.list, 'var(--purple)')]; })() : []),
+    ...(last ? [opt('repeat', last.id, `Как «${last.title}»`, `${fmtDay(last.date, false)} · ${last.exercises.length} ${plural(last.exercises.length, 'упражнение', 'упражнения', 'упражнений')}`, icon.repeat, 'var(--blue)')] : []),
+    opt('empty', '', 'Пустая тренировка', 'Упражнения добавишь потом', icon.plus, 'var(--gray, #8e8e93)'),
+  ].join('');
   openSheet({
     title: title[0].toUpperCase() + title.slice(1), left: 'Закрыть',
-    body: `${ws.length ? `<section class="card list thumbs">${ws.map(workoutRow).join('')}</section>` : `<p class="muted" style="margin:0">${k > today ? 'На этот день пока ничего нет.' : 'В этот день тренировки не было.'}</p>`}
-      <button class="btn block" data-act="new-workout" data-day="${k}">${icon.plus} ${label}</button>`,
+    body: `${ws.length ? `<section class="card list thumbs">${ws.map(workoutRow).join('')}</section>` : `<p class="muted" style="margin:0">${k > today ? 'На этот день пока ничего нет.' : k === today ? 'Сегодня тренировки ещё не было.' : 'В этот день тренировки не было.'}</p>`}
+      ${k === today ? `<button class="btn block" data-act="new-workout">${icon.play} Начать тренировку сейчас</button>` : ''}
+      <div class="section-caption" style="margin:4px 0 -4px">Сохранить на этот день</div>
+      <section class="card list">${opts}</section>
+      <p class="small muted" style="margin:0">Тренировка сохранится в календаре и не начнётся. Открой её в нужный день и отмечай подходы.</p>`,
   });
+}
+
+/** Сохраняет тренировку на выбранный день, не открывая её. */
+function planDay(k, kind, id) {
+  let w;
+  if (kind === 'tpl') {
+    const t = (state.templates || []).find((x) => x.id === id);
+    if (!t) return;
+    w = L.workoutFromProgram({ id: `tpl:${t.id}`, title: t.title, days: [{ title: t.title, items: t.items }] }, 0, doneWs(), groupOf);
+    w.programDay = null;
+  } else if (kind === 'program') {
+    const program = L.programById(state.settings.activeProgram);
+    if (!program) return;
+    w = L.workoutFromProgram(program, +id || 0, doneWs(), groupOf);
+  } else {
+    const src = kind === 'repeat' ? state.workouts.find((x) => x.id === id) : null;
+    w = { id: L.uid(), date: '', title: src?.title || 'Тренировка', note: '', durationMinutes: null, programID: null, programDay: null, finishedAt: null,
+      exercises: src ? src.exercises.map((e) => ({ name: e.name, sets: e.sets.filter((x) => !x.isWarmup).map((x) => ({ ...x, isDone: false })) })) : [] };
+  }
+  w.id = L.uid();
+  if (state.demo) clearDemo(false);
+  const [y, m, d] = k.split('-').map(Number);
+  const at = new Date(); at.setFullYear(y, m - 1, d);
+  if (k !== dayKeyOf(new Date())) at.setHours(18, 0, 0, 0);
+  w.date = at.toISOString();
+  w.finishedAt = null;
+  w.planned = true;
+  for (const e of w.exercises) for (const x of e.sets) x.isDone = false;
+  state.workouts.push(w);
+  save(); closeSheet(); render();
+  toast(`Сохранено на ${at.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`);
+  setTimeout(() => calDay(k), 250);
 }
 
 // ───────── Мой зал: свои тренажёры с фото и настройками ─────────
@@ -611,14 +657,14 @@ let gymBusy = false;
 
 /** Последняя открытая тренировка за 12 часов или новая; упражнение добавляется, если его там нет. */
 function addToWorkout(name, sets) {
-  let w = [...state.workouts].reverse().find((q) => !q.finishedAt && Date.now() - new Date(q.date) < 12 * 3600000);
+  let w = [...state.workouts].reverse().find((q) => !q.finishedAt && !q.planned && Date.now() - new Date(q.date) < 12 * 3600000 && Date.now() - new Date(q.date) > -3600000);
   if (!w) { w = { id: L.uid(), date: new Date().toISOString(), title: 'Тренировка', note: '', durationMinutes: null, programID: null, programDay: null, finishedAt: null, exercises: [] }; state.workouts.push(w); }
   if (!w.exercises.some((e) => e.name === name)) w.exercises.push({ name, sets });
   return w;
 }
 
 function lastResult(name) {
-  const prev = L.previousEntry(state.workouts, name, new Date(Date.now() + 864e5).toISOString(), null);
+  const prev = L.previousEntry(doneWs(), name, new Date(Date.now() + 864e5).toISOString(), null);
   if (!prev) return '';
   const sets = L.workingSets(prev.e);
   return sets.length ? `${fmtDay(prev.w.date, false)}: ${sets.map((q) => setText(q, name, prev.w)).join(', ')}` : '';
@@ -773,7 +819,7 @@ function cardioPhoto(w, ei) {
 }
 
 function setsFromPrevious(name, beforeIso, exceptId) {
-  const prev = L.previousEntry(state.workouts, name, beforeIso, exceptId);
+  const prev = L.previousEntry(doneWs(), name, beforeIso, exceptId);
   if (!prev) return groupOf(name) === 'cardio' ? [{ weight: 0, reps: 0, isWarmup: false, isDone: false }] : [{ weight: 0, reps: 0, isWarmup: false, isDone: false }, { weight: 0, reps: 0, isWarmup: false, isDone: false }, { weight: 0, reps: 0, isWarmup: false, isDone: false }];
   return prev.e.sets.map((s) => ({ weight: s.weight, reps: s.reps, ...(s.level ? { level: s.level } : {}), isWarmup: !!s.isWarmup, isDone: false }));
 }
@@ -783,7 +829,7 @@ function viewWorkout(id) {
   if (!w) return { title: 'Тренировка', top: topBack('#diary', 'Тренировка'), html: '<section class="card empty"><h2>Тренировка не найдена</h2><a class="btn" href="#diary">К дневнику</a></section>' };
   const blocks = w.exercises.map((e, ei) => {
     const g = groupOf(e.name);
-    const prev = L.previousEntry(state.workouts, e.name, w.date, w.id);
+    const prev = L.previousEntry(doneWs(), e.name, w.date, w.id);
     const range = rangeFor(w, e.name);
     const sug = prev ? L.suggest(prev.e.sets, e.name, g, range) : null;
     const isCardio = g === 'cardio' && !isHomeWorkout(w);
@@ -1275,7 +1321,7 @@ function startTemplate(id) {
 
 // ───────── Советник ─────────
 function currentTips() {
-  const ws = state.workouts.filter((w) => w.exercises.length);
+  const ws = doneWs().filter((w) => w.exercises.length);
   return L.advisorTips(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), new Date());
 }
 const tipHtml = (t) => `<div class="tip ${t.kind}"><span class="dot">${icon[TIP_ICON[t.kind]] || icon.info}</span><div><b>${esc(t.title)}</b><p>${esc(t.text)}</p></div></div>`;
@@ -1299,7 +1345,7 @@ const ADVISOR_CHECKS = [
 ];
 
 function aiSummaryNow() {
-  const ws = state.workouts.filter((w) => w.exercises.length);
+  const ws = doneWs().filter((w) => w.exercises.length);
   const prof = [...state.measurements].reverse().find((m) => m.age || m.heightCm) || {};
   return AI.aiSummary(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), currentTips(), { age: prof.age, heightCm: prof.heightCm });
 }
@@ -1539,7 +1585,7 @@ function viewAdvisor() {
 
 // ───────── Аналитика ─────────
 function viewAnalytics() {
-  const ws = state.workouts.filter((w) => w.exercises.length);
+  const ws = doneWs().filter((w) => w.exercises.length);
   const now = new Date();
   const P = ui.period;
   const inRange = (w, a, b) => { const d = L.daysBetween(w.date, now); return d >= a && d < b; };
@@ -1636,7 +1682,7 @@ function weeksAll(ws) {
 
 function viewExercise(nameEnc) {
   const name = nameEnc;
-  const rows = [...state.workouts].sort((a, b) => (a.date < b.date ? -1 : 1)).map((w) => ({ w, e: w.exercises.find((x) => x.name === name) })).filter((x) => x.e && L.workingSets(x.e).length);
+  const rows = doneWs().sort((a, b) => (a.date < b.date ? -1 : 1)).map((w) => ({ w, e: w.exercises.find((x) => x.name === name) })).filter((x) => x.e && L.workingSets(x.e).length);
   if (!rows.length) return { title: name, top: topBack('#analytics', name), html: '<section class="card empty"><p>По этому упражнению пока нет подходов.</p></section>' };
   const pts = rows.map(({ w, e }) => ({ date: w.date, value: L.bestE1rm(e) }));
   const maxW = Math.max(...rows.flatMap(({ e }) => L.workingSets(e).map((s) => s.weight)));
@@ -1846,6 +1892,7 @@ document.addEventListener('click', (ev) => {
     case 'seg-mode': ui.segMode = el.dataset.m; render(); break;
     case 'measurement': measurementSheet(el.dataset.day); break;
     case 'new-workout': closeSheet(); newWorkout(null, 0, el.dataset.day || null); break;
+    case 'plan-day': planDay(el.dataset.day, el.dataset.kind, el.dataset.id); break;
     case 'gym-find': gymFind(); break;
     case 'gym-sync': syncGymBase(true); break;
     case 'gym-group': ui.gymG = el.dataset.g; render(); break;
@@ -1870,20 +1917,21 @@ document.addEventListener('click', (ev) => {
     case 'exercise-info': exerciseInfo(el.dataset.name); break;
     case 'new-exercise': exercisePicker((name) => exerciseInfo(name), 'Своё упражнение'); break;
     case 'apply-sug': {
-      const prev = L.previousEntry(state.workouts, E.name, w.date, w.id);
+      const prev = L.previousEntry(doneWs(), E.name, w.date, w.id);
       const sug = prev && L.suggest(prev.e.sets, E.name, groupOf(E.name), rangeFor(w, E.name));
       if (sug) { E.sets = sug.sets.map((s) => ({ ...s, isDone: false })); save(); render(); }
       break;
     }
     case 'toggle-warm': S.isWarmup = !S.isWarmup; save(); render(); break;
     case 'toggle-done':
-      S.isDone = !S.isDone; save(); render();
+      S.isDone = !S.isDone; if (S.isDone) delete w.planned; save(); render();
       if (S.isDone) startTimer(state.settings.restSeconds || 120);
       break;
     case 'cardio-photo': cardioPhoto(w, +el.dataset.e); break;
     case 'del-set': E.sets.splice(+el.dataset.s, 1); save(); render(); break;
     case 'add-set': { const last = E.sets.at(-1); E.sets.push(last ? { ...last, isWarmup: false, isDone: false } : { weight: 0, reps: 0, isWarmup: false, isDone: false }); save(); render(); break; }
     case 'finish':
+      delete w.planned;
       if (!w.finishedAt) {
         w.finishedAt = new Date().toISOString();
         const mins = Math.round(L.daysBetween(w.date, new Date()) * 1440);
