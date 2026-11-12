@@ -470,13 +470,25 @@ function weekRings() {
     </div></section>`;
 }
 
+/** Примерное время: по подходам, отдыху из настроек и личному темпу из истории. */
+function estItems(items) {
+  return L.estimateMinutes(items.map((x) => (groupOf(x.exercise) === 'cardio' ? { cardio: true, minutes: x.minutes } : { sets: x.sets })), state.settings.restSeconds || 120, L.personalPace(doneWs()));
+}
+function estWorkout(w) {
+  return estItems(w.exercises.map((e) => {
+    const work = e.sets.filter((s) => !s.isWarmup);
+    return { exercise: e.name, sets: work.length || e.sets.length, minutes: groupOf(e.name) === 'cardio' ? e.sets.reduce((a, s) => a + (s.weight || 0), 0) : 0 };
+  }));
+}
+const estText = (m) => (m ? `≈ ${m} мин` : '');
+
 function workoutRow(w) {
   const first = w.exercises[0]?.name;
   const home = isHomeWorkout(w);
   return `<a class="item" href="#w-${w.id}">${first ? thumb(first) : `<span class="thumb">${icon.dumbbell}</span>`}
     <span class="grow"><span class="title"><b>${esc(w.title)}</b></span>
       <div class="sub">${w.exercises.map((e) => esc(e.name)).slice(0, 3).join(', ') || 'Без упражнений'}${w.exercises.length > 3 ? ` и ещё ${w.exercises.length - 3}` : ''}</div>
-      <div class="stat-line">${home ? `<span>${w.durationMinutes || 0} мин</span><span>${w.exercises.length} ${plural(w.exercises.length, 'упражнение', 'упражнения', 'упражнений')}</span>` : workoutStats(w).map((x) => `<span>${x}</span>`).join('')}${w.planned ? '<span class="badge plan">запланирована</span>' : !w.finishedAt ? '<span class="badge normal">идёт</span>' : ''}</div></span>
+      <div class="stat-line">${home ? `<span>${w.durationMinutes || 0} мин</span><span>${w.exercises.length} ${plural(w.exercises.length, 'упражнение', 'упражнения', 'упражнений')}</span>` : workoutStats(w).map((x) => `<span>${x}</span>`).join('')}${!home && !w.finishedAt && !w.durationMinutes && w.exercises.length ? `<span>${estText(estWorkout(w))}</span>` : ''}${w.planned ? '<span class="badge plan">запланирована</span>' : !w.finishedAt ? '<span class="badge normal">идёт</span>' : ''}</div></span>
     <span class="value small">${fmtDay(w.date, false)}</span>${icon.chev}</a>`;
 }
 
@@ -490,7 +502,7 @@ function viewDiary() {
     const day = program.days[d];
     const first = day.items[0]?.exercise;
     next = `<section class="card next-up">
-      <div><div class="small muted">${esc(program.title)} · день ${d + 1} из ${program.days.length}</div>
+      <div><div class="small muted">${esc(program.title)} · день ${d + 1} из ${program.days.length} · ${estText(estItems(day.items))}</div>
       <h2 style="margin:4px 0 6px;font:700 24px/29px var(--font-display)">${esc(day.title)}</h2>
       <div class="small muted">${day.items.map((i) => esc(i.exercise)).join(' · ')}</div></div>
       ${first ? figureSVG(first, groupOf(first)) : ''}
@@ -502,7 +514,7 @@ function viewDiary() {
   }
   const mine = (state.templates || []).filter((t) => t.kind === 'gym');
   const mineHtml = `<div class="section-title">Мои тренировки</div><section class="card list thumbs">
-    ${mine.map((t) => `<div class="item"><button class="item-main" data-act="tpl-start" data-id="${t.id}">${t.items[0] ? thumb(t.items[0].exercise) : `<span class="thumb">${icon.dumbbell}</span>`}<span class="grow"><span class="title"><b>${esc(t.title)}</b></span><div class="sub">${t.items.map((x) => esc(x.exercise)).join(', ')}</div></span></button>
+    ${mine.map((t) => `<div class="item"><button class="item-main" data-act="tpl-start" data-id="${t.id}">${t.items[0] ? thumb(t.items[0].exercise) : `<span class="thumb">${icon.dumbbell}</span>`}<span class="grow"><span class="title"><b>${esc(t.title)}</b></span><div class="sub">${t.items.map((x) => esc(x.exercise)).join(', ')}</div>${t.items.length ? `<div class="stat-line"><span>${estText(estItems(t.items))}</span><span>${(() => { const n = t.items.reduce((a, x) => a + (x.sets || 0), 0); return `${n} ${plural(n, 'подход', 'подхода', 'подходов')}`; })()}</span></div>` : ''}</span></button>
       <a class="text-btn" href="#build-gym-${t.id}">Изменить</a></div>`).join('')}
     <a class="item" href="#build-gym"><span class="thumb" style="--g:var(--orange)">${icon.plus}</span><span class="grow"><span class="title">Собрать свою тренировку</span><div class="sub">Свои упражнения, подходы и повторы</div></span>${icon.chev}</a></section>`;
   const actions = `<section class="card list">
@@ -603,9 +615,9 @@ function calDay(k) {
   const last = doneWs().sort((a, b) => (a.date < b.date ? 1 : -1))[0];
   const opt = (kind, id, name, sub, ic, color) => `<button class="item" data-act="plan-day" data-day="${k}" data-kind="${kind}" data-id="${esc(String(id ?? ''))}"><span class="thumb" style="--g:${color}">${ic}</span><span class="grow"><span class="title">${esc(name)}</span>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</span><span class="add-ic">${icon.plus}</span></button>`;
   const opts = [
-    ...(state.templates || []).filter((t) => t.kind === 'gym' && t.items.length).map((t) => opt('tpl', t.id, t.title, t.items.map((x) => x.exercise).slice(0, 3).join(', '), icon.dumbbell, 'var(--orange)')),
-    ...(program ? (() => { const d = L.nextDay(program, doneWs()); return [opt('program', d, program.days[d].title, `${program.title} · день ${d + 1}`, icon.list, 'var(--purple)')]; })() : []),
-    ...(last ? [opt('repeat', last.id, `Как «${last.title}»`, `${fmtDay(last.date, false)} · ${last.exercises.length} ${plural(last.exercises.length, 'упражнение', 'упражнения', 'упражнений')}`, icon.repeat, 'var(--blue)')] : []),
+    ...(state.templates || []).filter((t) => t.kind === 'gym' && t.items.length).map((t) => opt('tpl', t.id, t.title, `${estText(estItems(t.items))} · ${t.items.map((x) => x.exercise).slice(0, 3).join(', ')}`, icon.dumbbell, 'var(--orange)')),
+    ...(program ? (() => { const d = L.nextDay(program, doneWs()); return [opt('program', d, program.days[d].title, `${program.title} · день ${d + 1} · ${estText(estItems(program.days[d].items))}`, icon.list, 'var(--purple)')]; })() : []),
+    ...(last ? [opt('repeat', last.id, `Как «${last.title}»`, `${fmtDay(last.date, false)} · ${last.exercises.length} ${plural(last.exercises.length, 'упражнение', 'упражнения', 'упражнений')} · ${last.durationMinutes ? `${last.durationMinutes} мин` : estText(estWorkout(last))}`, icon.repeat, 'var(--blue)')] : []),
     opt('empty', '', 'Пустая тренировка', 'Упражнения добавишь потом', icon.plus, 'var(--gray, #8e8e93)'),
   ].join('');
   openSheet({
@@ -938,9 +950,9 @@ function viewWorkout(id) {
     title: w.title,
     top: topBack('#diary', fmtDay(w.date), w.finishedAt ? `<button class="text-btn" data-act="del-workout">Удалить</button>` : `<button class="text-btn strong" data-act="finish">Готово</button>`),
     html: `${w.planned ? `<section class="card plan-card"><div><b>Запланирована на ${esc(fmtDay(w.date))}, ${esc(toDate(w.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }))}</b>
-          <div class="small muted">Время можно поменять ниже. Напоминание придёт из календаря iPhone.</div></div>
+          <div class="small muted">${w.exercises.length ? `Займёт ${estText(estWorkout(w))}. ` : ''}Время можно поменять ниже. Напоминание придёт из календаря iPhone.</div></div>
           <div class="grid2"><button class="btn" data-act="w-start">${icon.play} Начать сейчас</button><button class="btn secondary" data-act="w-remind">${icon.bell} Напомнить</button></div></section>`
-        : !w.finishedAt && w.startedAt ? `<section class="card w-clock-card"><span class="w-clock-ic">${icon.clock}</span><span class="grow"><span class="small muted">Идёт тренировка</span><b id="w-clock" class="num">${clockText(w)}</b></span><button class="btn small" data-act="finish">${icon.check} Завершить</button></section>` : ''}
+        : !w.finishedAt && w.startedAt ? `<section class="card w-clock-card"><span class="w-clock-ic">${icon.clock}</span><span class="grow"><span class="small muted">Идёт тренировка${w.exercises.length ? ` · план ${estText(estWorkout(w))}` : ''}</span><b id="w-clock" class="num">${clockText(w)}</b></span><button class="btn small" data-act="finish">${icon.check} Завершить</button></section>` : ''}
       <section class="card stack">
         <div class="field"><label for="w-title">Название</label><input id="w-title" data-win="title" value="${esc(w.title)}"></div>
         <div class="grid2"><div class="field"><label for="w-date">Дата и время</label><input id="w-date" type="datetime-local" data-win="date" value="${dateVal}"></div>
@@ -997,13 +1009,22 @@ function exercisePicker(onPick, title = 'Упражнение') {
   });
 }
 
+/** 3D-анимации техники: короткие зацикленные видео, рендер своей сцены (см. project-files/forma-anim). */
+const EX_VIDEO = {
+  'Жим гантелей лёжа': 'anim-db-bench.mp4',
+  'Жим гантелей на наклонной скамье': 'anim-db-incline.mp4',
+  'Жим от груди': 'anim-chest-press.mp4',
+  'Жим от груди широким хватом': 'anim-chest-press.mp4',
+};
+const exVideo = (name) => (EX_VIDEO[name] ? `<video class="ex-video" src="${EX_VIDEO[name]}" autoplay loop muted playsinline preload="auto" aria-label="Анимация техники: ${esc(name)}"></video>` : '');
+
 function exerciseInfo(name) {
   const ex = state.exercises.find((x) => x.name === name);
   const info = CATALOG[name];
   const hist = workoutsSorted().filter((w) => w.exercises.some((e) => e.name === name)).slice(0, 5);
   openSheet({
     title: name, left: 'Закрыть',
-    body: `${(() => { const mm = machineFor(name); return mm?.photo ? `<img class="gym-photo" src="${mm.photo}" alt="${esc(mm.name)}"><div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(L.setupHint(mm).tip)}${L.machineSettingsText(mm) ? ` <b>Твои уровни: ${esc(L.machineSettingsText(mm))}.</b>` : ''}</span></div>` : `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>`; })()}
+    body: `${exVideo(name)}${(() => { const mm = machineFor(name); return mm?.photo ? `<img class="gym-photo" src="${mm.photo}" alt="${esc(mm.name)}"><div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(L.setupHint(mm).tip)}${L.machineSettingsText(mm) ? ` <b>Твои уровни: ${esc(L.machineSettingsText(mm))}.</b>` : ''}</span></div>` : EX_VIDEO[name] ? '' : `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>`; })()}
       <div class="card stack"><div class="cat" style="color:${GROUP_COLOR[groupOf(name)]}">${L.GROUPS[groupOf(name)]}</div>${info ? `<div class="muted small" style="margin-top:-6px">${esc(info.muscles)}</div>` : ''}
       ${info?.tips.length ? `<ul class="tips-list">${info.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : (machineFor(name)?.about ? `<span class="small">${esc(machineFor(name).about)}</span>` : '<span class="muted small">Подсказок по технике для этого упражнения нет.</span>')}</div>
       <div class="card"><div class="field"><label for="ex-note">Моя заметка: где тренажёр, настройки сиденья</label><textarea id="ex-note">${esc(ex?.note || '')}</textarea></div></div>
@@ -1081,7 +1102,7 @@ function viewPrograms() {
   const cards = L.PROGRAMS.map((p) => `<section class="card stack">
     <div class="row">${thumb(p.days[0].items[0].exercise, { animate: true, size: 'lg' })}<div class="grow"><b style="font-size:19px">${esc(p.title)}</b><div class="small muted">${esc(p.level)} · ${p.perWeek} ${plural(p.perWeek, 'раз', 'раза', 'раз')} в неделю</div></div>${p.id === active ? '<span class="badge normal">активная</span>' : ''}</div>
     <p style="margin:0;font-size:15px">${esc(p.summary)}</p>
-    ${p.days.map((d, i) => `<div><b class="small">${i + 1}. ${esc(d.title)}</b><div class="small muted">${d.items.map((x) => `${esc(x.exercise)} ${x.sets}×${x.reps[0]}–${x.reps[1]}`).join(' · ')}</div></div>`).join('')}
+    ${p.days.map((d, i) => `<div><b class="small">${i + 1}. ${esc(d.title)}</b> <span class="small muted">${estText(estItems(d.items))}</span><div class="small muted">${d.items.map((x) => `${esc(x.exercise)} ${x.sets}×${x.reps[0]}–${x.reps[1]}`).join(' · ')}</div></div>`).join('')}
     ${p.id === active ? '<button class="btn secondary" data-act="set-program" data-id="">Отключить программу</button>' : `<button class="btn" data-act="set-program" data-id="${p.id}">Тренироваться по ней</button>`}
   </section>`).join('');
   return { title: 'Программы', top: topBack('#diary', 'Программы'), html: `<p class="footnote" style="margin-top:0">Веса растут по двойной прогрессии: сначала добираешь повторы до верха диапазона во всех подходах, потом «Форма» прибавляет вес.</p>${cards}` };
@@ -1332,7 +1353,7 @@ function viewBuild(arg) {
     top: topBack(back, ui.draft.isNew ? 'Новая тренировка' : 'Изменить', '<button class="text-btn strong" data-act="b-save">Сохранить</button>'),
     html: `<section class="card"><div class="field"><label for="b-title">Название</label><input id="b-title" data-b="title" value="${esc(t.title)}" placeholder="${home ? 'Например, Вечерняя дома' : 'Например, Спина и бицепс'}"></div></section>
       ${settings}
-      <div class="section-caption">Упражнения${t.items.length ? ` · ${t.items.length}` : ''}</div>
+      <div class="section-caption">Упражнения${t.items.length ? ` · ${t.items.length}` : ''}${!home && t.items.length ? ` · ${estText(estItems(t.items))}` : ''}</div>
       <section class="card b-list">${rows || `<p class="muted small" style="margin:0">Добавь упражнения в нужном порядке. ${home ? 'Для каждого задай время работы.' : 'Для каждого задай подходы и диапазон повторов: «Форма» будет прибавлять вес, когда доберёшь верх диапазона.'}</p>`}</section>
       <button class="btn secondary block" data-act="b-add">${icon.plus} Добавить упражнение</button>
       <button class="btn block" data-act="b-save">Сохранить</button>

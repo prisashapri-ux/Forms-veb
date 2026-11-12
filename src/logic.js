@@ -695,3 +695,34 @@ export function mergeMeasurements(existing, incoming) {
 }
 
 export const SEGMENTS_ORDER = ['leftArm', 'trunk', 'rightArm', 'leftLeg', 'rightLeg'];
+
+/**
+ * Примерная длительность силовой тренировки в минутах, кратно 5.
+ * items: [{ sets, cardio?, minutes? }]; restSec: отдых между подходами.
+ * Подход ≈ 45 с работы + отдых, на смену упражнения 1,5 мин, разминка 5 мин.
+ * paceMin: личный темп (минут на подход) из истории, если он известен.
+ */
+export function estimateMinutes(items, restSec = 120, paceMin = null) {
+  if (!items.length) return 0;
+  let m = paceMin ? 0 : 5;
+  for (const it of items) {
+    if (it.cardio) { m += it.minutes > 0 ? it.minutes : 10; continue; }
+    const n = Math.max(1, it.sets || 3);
+    m += paceMin ? n * paceMin : n * (0.75 + restSec / 60) + 1.5;
+  }
+  return Math.max(10, Math.round(m / 5) * 5);
+}
+
+/** Личный темп: медиана минут на подход по завершённым тренировкам с записанным временем (нужно 3+). */
+export function personalPace(workouts) {
+  const r = [];
+  for (const w of workouts) {
+    if (!w.finishedAt || !(w.durationMinutes > 0)) continue;
+    const sets = w.exercises.reduce((a, e) => a + e.sets.filter((s) => !s.isWarmup && s.isDone !== false && s.reps > 0).length, 0);
+    if (sets >= 4) r.push(w.durationMinutes / sets);
+  }
+  if (r.length < 3) return null;
+  r.sort((a, b) => a - b);
+  const med = r[Math.floor(r.length / 2)];
+  return Math.min(6, Math.max(1.5, med));
+}

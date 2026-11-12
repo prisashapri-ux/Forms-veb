@@ -24,6 +24,8 @@ function networkFirst(req) {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  // Видео браузер грузит кусками (Range), это лучше оставить ему самому.
+  if (url.pathname.endsWith('.mp4')) return;
   if (isStatic(url)) { e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request))); return; }
   e.respondWith(networkFirst(e.request));
 });

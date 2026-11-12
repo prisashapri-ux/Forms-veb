@@ -310,3 +310,14 @@ test('резервная копия сохраняет пометку «запл
   assert.equal(plan.planned, true);
   assert.equal(back.workouts.find((w) => w.title === 'Было').finishedAt, null);
 });
+
+test('estimateMinutes: по подходам и отдыху, личный темп', () => {
+  // 4 упражнения по 3 подхода, отдых 120 с: 5 + 12×2,75 + 4×1,5 = 44 → 45
+  assert.equal(L.estimateMinutes([{ sets: 3 }, { sets: 3 }, { sets: 3 }, { sets: 3 }], 120), 45);
+  assert.equal(L.estimateMinutes([], 120), 0);
+  assert.equal(L.estimateMinutes([{ cardio: true, minutes: 20 }], 90), 25);
+  const w = (mins, n) => ({ finishedAt: 'x', durationMinutes: mins, exercises: [{ name: 'a', sets: Array.from({ length: n }, () => ({ reps: 10, isDone: true })) }] });
+  assert.equal(L.personalPace([w(60, 20), w(50, 20)]), null);
+  assert.equal(L.personalPace([w(60, 20), w(50, 20), w(40, 20)]), 2.5);
+  assert.equal(L.estimateMinutes([{ sets: 4 }, { sets: 4 }], 120, 2.5), 20);
+});

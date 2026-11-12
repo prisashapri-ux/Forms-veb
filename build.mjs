@@ -33,6 +33,6 @@ const csp = ["default-src 'self'", `script-src 'self' ${inline.join(' ')}`, "sty
   "connect-src 'self' https://api.deepseek.com", "worker-src 'self' blob:", "object-src 'none'", "base-uri 'self'", "form-action 'none'"].join('; ');
 html = html.replace('<meta charset="utf-8">', `<meta charset="utf-8">\n<meta http-equiv="Content-Security-Policy" content="${csp}">`);
 fs.writeFileSync(path.join(dist, 'index.html'), html);
-const list = ['./', './index.html', ...files.map((f) => './' + f)];
+const list = ['./', './index.html', ...files.filter((f) => !f.endsWith('.mp4')).map((f) => './' + f)]; // видео грузятся по запросу, не в кэш установки
 fs.writeFileSync(path.join(dist, 'sw.js'), fs.readFileSync(path.join(src, 'sw.js'), 'utf8').replace('__VERSION__', version).replace('__FILES__', JSON.stringify(list)));
 console.log(`dist/ готов: ${files.length + 2} файлов, версия ${version}`);
