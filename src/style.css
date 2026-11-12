@@ -611,6 +611,9 @@ body.chat-mode.kb .ai-composer { padding-bottom: 8px; }
 .gym-card .pic img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .thumb.photo { background: #f1f1f1; }
 .thumb.photo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.thumb.vid { background: #fff; }
+.thumb.vid video { width: 100%; height: 100%; object-fit: cover; display: block; transform: scale(1.12); pointer-events: none; }
+.thumb.vid.lg { width: 84px; height: 84px; border-radius: 16px; }
 .gym-card .pic .thumb { width: 64px; height: 64px; background: none; }
 .gym-card b { font-size: 15px; line-height: 1.25; padding: 0 4px; overflow-wrap: anywhere; }
 .gym-card .small { padding: 0 4px; overflow-wrap: anywhere; }

@@ -88,6 +88,9 @@ const latestFull = () => fullMeasurements().at(-1) || null;
 function thumb(name, { animate = false, size = '' } = {}) {
   const g = groupOf(name);
   // Упражнение на тренажёре из зала: вместо схемы-человечка настоящее фото тренажёра.
+  // В тренировке (animate) — 3D-анимация упражнения, если она есть.
+  const vid = animate && exVideoSrc(name);
+  if (vid) return `<span class="thumb photo vid ${size}"><video src="${vid}" autoplay loop muted playsinline preload="auto" aria-hidden="true"></video></span>`;
   const pic = machineFor(name)?.photo;
   if (pic) return `<span class="thumb photo ${size}"><img src="${pic}" alt="" loading="lazy"></span>`;
   return `<span class="thumb ${size}" style="--g:${GROUP_COLOR[g] || 'var(--accent)'}">${figureSVG(name, g, { animate, frame: animate ? null : 1 })}</span>`;
@@ -1015,12 +1018,20 @@ const EX_VIDEO = {
   'Жим гантелей на наклонной скамье': 'anim-db-incline.mp4',
   'Жим от груди': 'anim-chest-press.mp4',
   'Шаг и бег на дорожке': 'anim-treadmill.mp4',
+  'Бабочка (пек-дек)': 'anim-ddx-babochka.mp4',
+  'Тяга горизонтального блока': 'anim-ddx-gorizont-blok.mp4',
+  'Тяга верхнего блока': 'anim-ddx-vertikal-rych.mp4',
+  'Жим ногами': 'anim-ddx-zhim-nogami.mp4',
+  'Разгибание ног в тренажёре': 'anim-ddx-razgibanie-goleni-blok.mp4',
+  'Сгибание ног в тренажёре': 'anim-ddx-sgibanie-sidya.mp4',
 };
 /** Анимация конкретной модели тренажёра из базы зала: одна модель, одно видео. */
 const MACHINE_VIDEO = {
   'ddx-zhim-grudi': 'anim-chest-press.mp4', 'ddx-begovaya': 'anim-treadmill.mp4',
   ...Object.fromEntries(['babochka', 'zhim-grudi-blok', 'zhim-plech', 'vertikal-rych', 'gorizont-blok', 'zhim-nogami', 'razgibanie-goleni-blok', 'sgibanie-sidya'].map((k) => [`ddx-${k}`, `anim-ddx-${k}.mp4`])),
 };
+// Браузер иногда не запускает autoplay у видео, вставленного через innerHTML: запускаем сами.
+new MutationObserver(() => { for (const v of document.querySelectorAll('video[autoplay]')) if (v.paused && !v.dataset.kick) { v.dataset.kick = 1; v.muted = true; v.play()?.catch?.(() => {}); } }).observe(document.body, { childList: true, subtree: true });
 const videoTag = (src, label) => `<video class="ex-video" src="${src}" autoplay loop muted playsinline preload="auto" aria-label="Анимация: ${esc(label)}"></video>`;
 /** Видео упражнения: своё по названию, иначе анимация тренажёра, к которому оно привязано. */
 const exVideoSrc = (name) => EX_VIDEO[name] || MACHINE_VIDEO[machineFor(name)?.id] || '';
