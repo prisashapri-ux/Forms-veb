@@ -585,17 +585,22 @@ export function mergeMachines(current, json) {
   try { f = typeof json === 'string' ? JSON.parse(json) : json; } catch { throw new Error('Файл не читается: это не JSON.'); }
   const list = Array.isArray(f?.machines) ? f.machines.map(cleanMachine).filter(Boolean).slice(0, 200) : null;
   if (!list) throw new Error('В файле нет тренажёров.');
-  const out = current.map((m) => ({ ...m }));
+  // Дубли, убранные из базы зала: удаляем, если человек не записал в них свои настройки.
+  const removedIds = new Set(Array.isArray(f?.removed) ? f.removed.filter((x) => typeof x === 'string') : []);
+  const own = (m) => (m.adjust && Object.values(m.adjust).some(Boolean)) || (m.settings && String(m.settings).trim());
+  const out = current.filter((m) => !removedIds.has(m.id) || own(m)).map((m) => ({ ...m }));
+  const removed = current.length - out.length;
   let added = 0, updated = 0;
   for (const m of list) {
     const i = out.findIndex((x) => x.name.toLowerCase() === m.name.toLowerCase());
+    if (removedIds.has(m.id)) continue;
     if (i < 0) { out.push({ ...m, id: out.some((x) => x.id === m.id) ? uid() : m.id }); added++; continue; }
     const prev = out[i];
     out[i] = { ...prev, ...m, id: prev.id, photo: m.photo || prev.photo, settings: prev.settings || m.settings, created: prev.created };
     if (prev.adjust || m.adjust) out[i].adjust = prev.adjust || m.adjust; else delete out[i].adjust;
     updated++;
   }
-  return { machines: out, added, updated };
+  return { machines: out, added, updated, removed };
 }
 
 function clean(o) {

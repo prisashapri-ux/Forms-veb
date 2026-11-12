@@ -1978,7 +1978,7 @@ async function syncGymBase(force = false) {
     const r = applyMachines(json);
     state.settings.gymBase = v;
     save(); render();
-    if (r.added) toast(`Тренажёры: +${r.added}`);
+    if (r.added || r.removed) toast([r.added ? `Тренажёры: +${r.added}` : '', r.removed ? `убрано дублей: ${r.removed}` : ''].filter(Boolean).join(', '));
   } catch { if (force) toast('Не получилось загрузить, проверь интернет'); /* иначе попробуем в следующий раз */ } finally {
     gymSyncing = false;
     if (route().name === 'gym') render();

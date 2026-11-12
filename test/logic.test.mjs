@@ -321,3 +321,10 @@ test('estimateMinutes: по подходам и отдыху, личный те�
   assert.equal(L.personalPace([w(60, 20), w(50, 20), w(40, 20)]), 2.5);
   assert.equal(L.estimateMinutes([{ sets: 4 }, { sets: 4 }], 120, 2.5), 20);
 });
+
+test('mergeMachines: убирает дубли из removed, но не трогает тренажёр со своими уровнями', () => {
+  const cur = [{ id: 'a', name: 'A', exercise: 'x', group: 'chest' }, { id: 'b', name: 'B', exercise: 'x', group: 'chest' }, { id: 'c', name: 'C', exercise: 'x', group: 'chest', adjust: { seat: '4' } }];
+  const r = L.mergeMachines(cur, { machines: [{ id: 'a', name: 'A', exercise: 'x', group: 'chest' }], removed: ['b', 'c'] });
+  assert.deepEqual(r.machines.map((m) => m.id), ['a', 'c']);
+  assert.equal(r.removed, 1);
+});
