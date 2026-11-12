@@ -300,3 +300,13 @@ test('ИИ: план тренировок из служебных строк', a
   assert.equal(r.workouts[1].date, null);
   assert.match(AI.todayLine(new Date(2026, 10, 12)), /^Сегодня 2026-11-12, четверг/);
 });
+
+test('резервная копия сохраняет пометку «запланирована»', () => {
+  const s = L.emptyState();
+  s.workouts.push({ id: 'a', date: '2026-11-20T15:00:00.000Z', title: 'План', note: '', durationMinutes: null, programID: null, programDay: null, finishedAt: null, planned: true, exercises: [{ name: 'Жим штанги лёжа', sets: [{ weight: 60, reps: 8, isWarmup: false, isDone: false }] }] });
+  s.workouts.push({ id: 'b', date: '2026-11-10T15:00:00.000Z', title: 'Было', note: '', durationMinutes: 50, programID: null, programDay: null, finishedAt: 'мусор', exercises: [] });
+  const back = L.readBackup(JSON.stringify(L.makeBackup(s)));
+  const plan = back.workouts.find((w) => w.title === 'План');
+  assert.equal(plan.planned, true);
+  assert.equal(back.workouts.find((w) => w.title === 'Было').finishedAt, null);
+});

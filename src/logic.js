@@ -466,7 +466,8 @@ export function makeBackup(state) {
     exercises: [...state.exercises].sort((a, b) => a.name.localeCompare(b.name, 'ru')).map((e) => clean({ name: e.name, group: e.group, isCustom: !!e.isCustom, note: e.note || undefined })),
     workouts: [...state.workouts].sort((a, b) => (a.date < b.date ? -1 : 1)).map((w) => clean({
       date: iso(w.date), title: w.title, note: w.note || '', durationMinutes: w.durationMinutes ?? undefined,
-      programID: w.programID ?? undefined, programDay: w.programDay ?? undefined, finishedAt: w.finishedAt ? iso(w.finishedAt) : undefined,
+      programID: w.programID ?? undefined, programDay: w.programDay ?? undefined, finishedAt: w.finishedAt && !Number.isNaN(+toDate(w.finishedAt)) ? iso(w.finishedAt) : undefined,
+      planned: w.planned ? true : undefined,
       exercises: w.exercises.map((e, i) => ({ order: i, exerciseName: e.name, group: groupOfIn(state, e.name),
         sets: e.sets.map((s, j) => clean({ order: j, weight: s.weight, reps: s.reps, level: s.level || undefined, isWarmup: !!s.isWarmup, isDone: !!s.isDone })) })),
     })),
@@ -650,7 +651,7 @@ export function readBackup(json) {
     });
     state.workouts.push({ id: uid(), date: d.toISOString(), title: String(w.title || 'Тренировка'), note: String(w.note || ''),
       durationMinutes: finite(w.durationMinutes, 0, 1440) ? w.durationMinutes : null, programID: w.programID ?? null,
-      programDay: Number.isInteger(w.programDay) ? w.programDay : null, finishedAt: w.finishedAt || null, exercises });
+      programDay: Number.isInteger(w.programDay) ? w.programDay : null, finishedAt: w.finishedAt && !Number.isNaN(+new Date(w.finishedAt)) ? new Date(w.finishedAt).toISOString() : null, exercises, ...(w.planned === true ? { planned: true } : {}) });
   }
   for (const x of f.food || []) {
     const d = new Date(x.date);

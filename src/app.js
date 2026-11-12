@@ -2,7 +2,7 @@
 import * as L from './logic.js';
 import { CATALOG } from './catalog.js';
 import { lineChart, barChart, dualChart, normScale, sparkline, rings } from './charts.js';
-import { loadState, saveState, flush, clearState, persist } from './store.js';
+import { loadState, saveState, flush, clearState, persist, saveSnapshot, loadSnapshot, dropSnapshot } from './store.js';
 import { parsePdf, InBodyError } from './parser.js';
 import { demoState } from './demo.js';
 import { figureSVG } from './figures.js';
@@ -70,6 +70,8 @@ let state = L.emptyState();
 const ui = { gymQ: '', gymG: '', calMonth: null, bodyMetric: 'weight', segMode: 'muscle', period: 28, timer: null, pdfjs: null };
 
 function save() { saveState(state); }
+let snapAt = null; // когда сделана копия перед последним восстановлением из файла
+addEventListener('forma-save-failed', () => toast('Не получилось сохранить: память браузера заполнена. Сохрани копию в Настройках.'));
 const groupOf = (name) => L.groupOfIn(state, name);
 const volumeOf = (w) => L.workoutVolume(w, groupOf);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -1816,7 +1818,8 @@ function viewSettings() {
         <p class="small muted" style="margin:0">Все данные хранятся только в этом браузере: ${counts}. Копия в файле переносится между телефонами и в iOS-приложение «Форма», и обратно.</p>
         ${state.settings.lastBackup ? `<p class="small muted" style="margin:0">Последняя копия: ${fmtDay(state.settings.lastBackup)}.</p>` : ''}
         <button class="btn" data-act="export">Сохранить копию</button>
-        <button class="btn secondary" data-act="import-backup">Восстановить из копии</button></section>
+        <button class="btn secondary" data-act="import-backup">Восстановить из копии</button>
+        ${snapAt ? `<button class="btn ghost" data-act="undo-restore">Вернуть данные, какими они были до восстановления ${fmtDay(snapAt, false)}</button>` : ''}</section>
       <section class="card stack" id="ai-settings"><h2>ИИ-советник (DeepSeek)</h2>
         <p class="small muted" style="margin:0">Чтобы задавать вопросы советнику, нужен свой ключ API DeepSeek. Создай его на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> и пополни баланс: один вопрос стоит меньше рубля. Ключ хранится только в этом браузере и не попадает в резервную копию.</p>
         <div class="field"><label for="ai-key">Ключ API</label><input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" value="${esc(AI.getKey())}"></div>
@@ -1908,7 +1911,11 @@ function importBackup(file) {
     try { next = L.readBackup(text); } catch (e) { toast(e.message); return; }
     next.settings = { ...state.settings, ...next.settings, activeProgram: state.settings.activeProgram };
     confirmSheet('Восстановить копию?', `В копии ${next.measurements.length} замеров, ${next.workouts.length} тренировок и ${next.food.length} записей еды. Текущие данные в браузере заменятся.`, 'Заменить данные', () => {
-      state = next; save(); go('body'); render(true); toast('Данные восстановлены');
+      saveSnapshot(state).then((ok) => {
+        if (ok) snapAt = new Date().toISOString();
+        state = next; save(); go('body'); render(true);
+        toast(ok ? 'Данные восстановлены. Вернуть как было можно в Настройках' : 'Данные восстановлены');
+      });
     });
   });
 }
@@ -1935,6 +1942,14 @@ document.addEventListener('click', (ev) => {
     case 'import-backup': pickFile('application/json,.json', importBackup); break;
     case 'export': exportBackup(); break;
     case 'app-update': appUpdate(); break;
+    case 'undo-restore':
+      confirmSheet('Вернуть прежние данные?', 'Данные станут такими, какими были до восстановления из файла. То, что ты записал после восстановления, пропадёт.', 'Вернуть', () => {
+        loadSnapshot().then((snap) => {
+          if (!snap?.state) { toast('Прежних данных не нашлось'); snapAt = null; render(); return; }
+          state = snap.state; snapAt = null; save(); dropSnapshot(); render(true); toast('Вернул прежние данные');
+        });
+      });
+      break;
     case 'load-demo':
       if (state.measurements.length || state.workouts.length) { toast('Примерные данные показываются только в пустом приложении'); break; }
       state = demoState(); save(); render(true); break;
@@ -2104,6 +2119,7 @@ async function start() {
   for (const [name, group] of L.DEFAULT_EXERCISES) if (!state.exercises.some((e) => e.name === name)) state.exercises.push({ name, group, isCustom: false, note: '' });
   render(true);
   window.__formaBooted = true;
+  loadSnapshot().then((snap) => { if (snap?.at && Date.now() - new Date(snap.at) < 30 * 864e5) snapAt = snap.at; });
   persist();
   syncGymBase();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {

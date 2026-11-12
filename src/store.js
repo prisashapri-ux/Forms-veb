@@ -54,8 +54,29 @@ async function write(state) {
     try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
     return true;
   } catch {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); return true; } catch { return false; }
+    // В localStorage мало места (около 5 МБ): фото тренажёров из встроенной базы не пишем, они подтянутся заново с сайта.
+    const lite = { ...state, settings: { ...state.settings, gymBase: '' }, machines: (state.machines || []).map((m) => (String(m.id).startsWith('ddx-') ? { ...m, photo: null } : m)) };
+    try { localStorage.setItem(LS_KEY, JSON.stringify(lite)); return true; } catch { notifyFail(); return false; }
   }
+}
+
+let failNotified = 0;
+function notifyFail() {
+  if (Date.now() - failNotified < 60000) return;
+  failNotified = Date.now();
+  globalThis.dispatchEvent?.(new Event('forma-save-failed'));
+}
+
+const SNAP = 'before-restore';
+/** Копия данных перед восстановлением из файла, чтобы можно было вернуть как было. */
+export async function saveSnapshot(state) {
+  try { await idb('readwrite', (s) => s.put({ at: new Date().toISOString(), state }, SNAP)); return true; } catch { return false; }
+}
+export async function loadSnapshot() {
+  try { return (await idb('readonly', (s) => s.get(SNAP))) || null; } catch { return null; }
+}
+export async function dropSnapshot() {
+  try { await idb('readwrite', (s) => s.delete(SNAP)); } catch { /* ignore */ }
 }
 
 /** Сохраняет с задержкой, чтобы не писать на каждое нажатие клавиши. */
