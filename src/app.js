@@ -1017,9 +1017,14 @@ const EX_VIDEO = {
   'Шаг и бег на дорожке': 'anim-treadmill.mp4',
 };
 /** Анимация конкретной модели тренажёра из базы зала: одна модель, одно видео. */
-const MACHINE_VIDEO = { 'ddx-zhim-grudi': 'anim-chest-press.mp4', 'ddx-begovaya': 'anim-treadmill.mp4' };
+const MACHINE_VIDEO = {
+  'ddx-zhim-grudi': 'anim-chest-press.mp4', 'ddx-begovaya': 'anim-treadmill.mp4',
+  ...Object.fromEntries(['babochka', 'zhim-grudi-blok', 'zhim-plech', 'vertikal-rych', 'gorizont-blok', 'zhim-nogami', 'razgibanie-goleni-blok', 'sgibanie-sidya'].map((k) => [`ddx-${k}`, `anim-ddx-${k}.mp4`])),
+};
 const videoTag = (src, label) => `<video class="ex-video" src="${src}" autoplay loop muted playsinline preload="auto" aria-label="Анимация: ${esc(label)}"></video>`;
-const exVideo = (name) => (EX_VIDEO[name] ? videoTag(EX_VIDEO[name], name) : '');
+/** Видео упражнения: своё по названию, иначе анимация тренажёра, к которому оно привязано. */
+const exVideoSrc = (name) => EX_VIDEO[name] || MACHINE_VIDEO[machineFor(name)?.id] || '';
+const exVideo = (name) => (exVideoSrc(name) ? videoTag(exVideoSrc(name), name) : '');
 
 function exerciseInfo(name) {
   const ex = state.exercises.find((x) => x.name === name);
@@ -1027,7 +1032,7 @@ function exerciseInfo(name) {
   const hist = workoutsSorted().filter((w) => w.exercises.some((e) => e.name === name)).slice(0, 5);
   openSheet({
     title: name, left: 'Закрыть',
-    body: `${exVideo(name)}${(() => { const mm = machineFor(name); return mm?.photo ? `${EX_VIDEO[name] ? '' : `<img class="gym-photo" src="${mm.photo}" alt="${esc(mm.name)}">`}<div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(L.setupHint(mm).tip)}${L.machineSettingsText(mm) ? ` <b>Твои уровни: ${esc(L.machineSettingsText(mm))}.</b>` : ''}</span></div>` : EX_VIDEO[name] ? '' : `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>`; })()}
+    body: `${exVideo(name)}${(() => { const mm = machineFor(name); const vid = exVideoSrc(name); return mm?.photo ? `${vid ? '' : `<img class="gym-photo" src="${mm.photo}" alt="${esc(mm.name)}">`}<div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(L.setupHint(mm).tip)}${L.machineSettingsText(mm) ? ` <b>Твои уровни: ${esc(L.machineSettingsText(mm))}.</b>` : ''}</span></div>` : vid ? '' : `<div class="hero-figure" style="--g:${GROUP_COLOR[groupOf(name)]}">${figureSVG(name, groupOf(name))}</div>`; })()}
       <div class="card stack"><div class="cat" style="color:${GROUP_COLOR[groupOf(name)]}">${L.GROUPS[groupOf(name)]}</div>${info ? `<div class="muted small" style="margin-top:-6px">${esc(info.muscles)}</div>` : ''}
       ${info?.tips.length ? `<ul class="tips-list">${info.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : (machineFor(name)?.about ? `<span class="small">${esc(machineFor(name).about)}</span>` : '<span class="muted small">Подсказок по технике для этого упражнения нет.</span>')}</div>
       <div class="card"><div class="field"><label for="ex-note">Моя заметка: где тренажёр, настройки сиденья</label><textarea id="ex-note">${esc(ex?.note || '')}</textarea></div></div>
