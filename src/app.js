@@ -1024,11 +1024,21 @@ const EX_VIDEO = {
   'Жим ногами': 'anim-ddx-zhim-nogami.mp4',
   'Разгибание ног в тренажёре': 'anim-ddx-razgibanie-goleni-blok.mp4',
   'Сгибание ног в тренажёре': 'anim-ddx-sgibanie-sidya.mp4',
+  'Приседания со штангой': 'anim-ddx-silovaya-stoyka.mp4',
+  'Гиперэкстензия': 'anim-ddx-ekstenziya.mp4',
+  'Ягодичный мост': 'anim-ddx-yagodichny-most.mp4',
+  'Молотки': 'anim-ddx-gantely.mp4',
+  'Подъём ног в висе': 'anim-ddx-stoyka-nog.mp4',
 };
 /** Анимация конкретной модели тренажёра из базы зала: одна модель, одно видео. */
 const MACHINE_VIDEO = {
   'ddx-zhim-grudi': 'anim-chest-press.mp4', 'ddx-begovaya': 'anim-treadmill.mp4',
-  ...Object.fromEntries(['babochka', 'zhim-grudi-blok', 'zhim-plech', 'vertikal-rych', 'gorizont-blok', 'zhim-nogami', 'razgibanie-goleni-blok', 'sgibanie-sidya'].map((k) => [`ddx-${k}`, `anim-ddx-${k}.mp4`])),
+  ...Object.fromEntries(['babochka', 'zhim-grudi-blok', 'zhim-plech', 'vertikal-rych', 'gorizont-blok', 'zhim-nogami', 'razgibanie-goleni-blok', 'sgibanie-sidya',
+    'zhim-grudi-ugol', 'zhim-grudi-shirokiy', 'zhim-plech-blok', 'brusya-rych', 'tyaga-gorizont', 'gorizont-rych', 'nizhnyaya-tyaga', 'verh-spiny', 'x-tyaga', 'x-tyaga-blok', 'gibrid-tyaga',
+    'privedenie-plecha', 'reverse-fly', 'otvedenie-plecha-blok', 'triceps-blok', 'biceps-blok', 'skamya-skotta', 'pullover',
+    'sgibanie-lezha', 'razgibanie-goleni-rych', 'gakk', 'mayatnik', 'noski-rych', 'privedenie-beder', 'otvedenie-beder', 'otvedenie-beder-rych', 'otvedenie-beder-blok', 'silovaya-stoyka', 'multi-hip', 'razgibanie-bedra', 'yagodichny-most',
+    'razgibanie-spiny', 'skruchivanie', 'skruchivanie-rych', 'ekstenziya', 'ghd', 'stoyka-nog', 'ab-coaster', 'krossover', 'gravitron', 'gantely', 'multistanciya'].map((k) => [`ddx-${k}`, `anim-ddx-${k}.mp4`])),
+  ...Object.fromEntries(['mx-tyaga-ruk', 'mx-vertikal-blok', 'mx-vertikal-tros', 'mx-biceps-upor', 'reverse-hyper', 'sgib-razgib-goleni'].map((k) => [k, `anim-${k}.mp4`])),
 };
 // Браузер иногда не запускает autoplay у видео, вставленного через innerHTML: запускаем сами.
 new MutationObserver(() => { for (const v of document.querySelectorAll('video[autoplay]')) if (v.paused && !v.dataset.kick) { v.dataset.kick = 1; v.muted = true; v.play()?.catch?.(() => {}); } }).observe(document.body, { childList: true, subtree: true });
