@@ -685,3 +685,18 @@ button.back-btn { border: 0; background: transparent; padding: 0; font: inherit;
 .lock-card .lock-ic svg { width: 18px; height: 18px; }
 .lock-card.on .lock-ic { background: var(--accent); color: #fff; }
 .lock-card b { display: block; margin-bottom: 2px; }
+/* Дома: сколько повторов сделал, уровень нагрузки */
+.player .rep-ask { display: grid; justify-items: center; gap: 6px; min-height: 40px; }
+.player .rep-ask .q { font-size: 15px; color: var(--muted); }
+.player .rep-row { display: flex; align-items: center; gap: 14px; }
+.player .rep-row button { width: 44px; height: 44px; border-radius: 22px; border: 0; background: var(--fill, rgba(120,120,128,.16)); color: inherit; font-size: 24px; font-weight: 600; }
+.player .rep-row .num { width: 72px; border-radius: 14px; font-size: 26px; font-weight: 700; opacity: .55; }
+.player .rep-ask.set .num { opacity: 1; background: var(--teal); color: #fff; }
+.player .rep-ask .rep-hint { font-size: 13px; color: var(--muted); }
+.level-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; }
+.level-card .sub { font-size: 14px; color: var(--muted); margin-top: 2px; }
+.lv-dots { display: grid; grid-template-columns: repeat(4, 8px); gap: 4px; align-items: end; }
+.lv-dots i { display: block; width: 8px; border-radius: 3px; background: var(--fill, rgba(120,120,128,.2)); }
+.lv-dots i:nth-child(1) { height: 10px; } .lv-dots i:nth-child(2) { height: 16px; } .lv-dots i:nth-child(3) { height: 22px; } .lv-dots i:nth-child(4) { height: 28px; }
+.lv-dots i.on { background: var(--pink); }
+.count-ring .count.long { font-size: 32px; letter-spacing: -0.5px; }

@@ -348,3 +348,26 @@ test('mergeMachines: убирает дубли из removed, но не трог�
   assert.deepEqual(r.machines.map((m) => m.id), ['a', 'c']);
   assert.equal(r.removed, 1);
 });
+
+test('Дома: нагрузка растёт по уровням, повторы пишутся в отрезок', async () => {
+  const H = await import('../src/home.js');
+  const p = H.homeById('pull1');
+  assert.equal(H.homeScaled(p, 0).stage, 1);
+  assert.deepEqual(H.homeScaled(p, 0).items, p.items);
+  const s3 = H.homeScaled(p, 6);
+  assert.equal(s3.stage, 3);
+  assert.equal(s3.items[0][1], p.items[0][1] + 10);
+  assert.ok(s3.rest < p.rest && s3.rest >= 10);
+  assert.equal(H.homeScaled(p, 100).stage, 4);
+  const care = H.homeScaled(H.homeById('cooldown'), 50);
+  assert.equal(care.stage, 0);
+  assert.deepEqual(care.items, H.homeById('cooldown').items);
+  assert.ok(H.countable('Подтягивания широким хватом'));
+  assert.ok(!H.countable('Вис на перекладине') && !H.countable('Поза ребёнка'));
+  const w = H.homeWorkout(p, [{ kind: 'work', ex: 'Подтягивания', dur: 30, count: 7 }, { kind: 'work', ex: 'Подтягивания', dur: 30 }], 0, 60000, 'x');
+  assert.equal(w.exercises[0].sets[0].count, 7);
+  assert.ok(!('count' in w.exercises[0].sets[1]));
+  const { CATALOG } = await import('../src/catalog.js'); const { PULLUP_CATALOG } = await import('../src/extras.js');
+  const names = new Set(L.DEFAULT_EXERCISES.map(([n]) => n)); const tips = { ...CATALOG, ...H.HOME_CATALOG, ...PULLUP_CATALOG };
+  for (const h of H.HOME) for (const [ex] of h.items) { assert.ok(names.has(ex), `нет в списке: ${ex}`); assert.ok(tips[ex], `нет подсказок: ${ex}`); }
+});
