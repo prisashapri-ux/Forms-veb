@@ -1386,8 +1386,8 @@ function viewAI() {
         return `<div class="ai-msg user">${pic}<div class="bubble">${esc(m.text).replace(/\n/g, '<br>')}</div></div>`;
       }
       if (m.error) return `<div class="ai-msg assistant error"><span class="ai-ava">${icon.spark}</span><div class="ai-text">${esc(m.text)}<div class="ai-actions"><button class="text-btn" data-act="ai-retry">Повторить</button></div></div></div>`;
-      const { text, exercises } = AI.parseExercises(m.text);
-      return `<div class="ai-msg assistant"><span class="ai-ava">${icon.spark}</span><div class="ai-text">${AI.mdLite(text)}${exercises.map((x, k) => aiExCard(x, m, i, k)).join('')}
+      const { text, exercises, workouts } = AI.parseExercises(m.text);
+      return `<div class="ai-msg assistant"><span class="ai-ava">${icon.spark}</span><div class="ai-text">${AI.mdLite(text)}${exercises.map((x, k) => aiExCard(x, m, i, k)).join('')}${aiPlanCards(workouts, m, i)}
           <div class="ai-actions"><button class="icon-btn plain" data-act="ai-copy" data-i="${i}" aria-label="Скопировать">${icon.copy}</button>${m.model === 'think' || m.model === 'deepseek-reasoner' ? '<span class="small muted">думающая</span>' : ''}</div></div></div>`;
     }).join('')}
       ${aiState.busy ? `<div class="ai-msg assistant"><span class="ai-ava">${icon.spark}</span><div class="ai-text"><span class="typing"><i></i><i></i><i></i></span>${thinking ? '<span class="small muted"> думает, это может занять минуту</span>' : ''}</div></div>` : ''}</div>`;
@@ -1403,6 +1403,41 @@ function viewAI() {
 }
 
 /** Карточка упражнения из ответа ИИ: добавить в список и в тренировку. */
+/** День для тренировки из ответа ИИ: его дата, но не в прошлом; без даты — следующие дни по порядку. */
+function aiPlanDay(wk, j) {
+  const today = dayKeyOf(new Date());
+  if (wk.date && wk.date >= today) return wk.date;
+  return wk.date ? today : dayKeyOf(new Date(Date.now() + (j + 1) * 864e5));
+}
+const dayLabel = (k) => { const t = new Date(`${k}T12:00:00`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' }); return t[0].toUpperCase() + t.slice(1); };
+
+/** Карточки тренировок, которые подобрал ИИ: каждую можно сохранить в календарь как запланированную. */
+function aiPlanCards(workouts, m, i) {
+  if (!workouts.length) return '';
+  const saved = (j) => { const id = m.planned?.[j]; return id && state.workouts.find((w) => w.id === id); };
+  const cards = workouts.map((wk, j) => {
+    const w = saved(j);
+    const k = w ? dayKeyOf(w.date) : aiPlanDay(wk, j);
+    return `<div class="ai-plan"><div class="head"><span class="ai-plan-date">${esc(dayLabel(k))}</span><b>${esc(wk.title)}</b></div>
+      <ol>${wk.exercises.map((x) => `<li>${esc(x.name)} <span class="muted">${x.sets}×${x.reps[0] === x.reps[1] ? x.reps[0] : `${x.reps[0]}–${x.reps[1]}`}${x.weight ? ` · ${num(x.weight, 1)} кг` : ''}</span></li>`).join('')}</ol>
+      ${w ? `<a class="btn small" href="#w-${w.id}">${icon.check} В календаре · открыть</a>` : `<button class="btn small" data-act="ai-plan" data-i="${i}" data-j="${j}">${icon.calendar} В календарь на ${esc(dayLabel(k))}</button>`}</div>`;
+  }).join('');
+  const left = workouts.filter((_, j) => !saved(j)).length;
+  return `${cards}${workouts.length > 1 && left > 1 ? `<button class="btn block" data-act="ai-plan-all" data-i="${i}">${icon.plus} Сохранить все ${left} в календарь</button>` : ''}`;
+}
+
+/** Сохраняет тренировку от ИИ на день k как запланированную, не начиная её. */
+function savePlanned(k, title, exercises) {
+  if (state.demo) clearDemo(false);
+  const [y, mo, d] = k.split('-').map(Number);
+  const at = new Date(); at.setFullYear(y, mo - 1, d);
+  if (k !== dayKeyOf(new Date())) at.setHours(18, 0, 0, 0);
+  const w = { id: L.uid(), date: at.toISOString(), title, note: '', durationMinutes: null, programID: null, programDay: null, finishedAt: null, planned: true,
+    exercises: exercises.map((x) => ({ name: aiEnsureExercise(x), sets: Array.from({ length: x.sets }, () => ({ weight: x.weight, reps: x.reps[0], isWarmup: false, isDone: false })) })) };
+  state.workouts.push(w);
+  return w;
+}
+
 function aiExCard(x, m, i, k) {
   const known = state.exercises.some((e) => e.name.toLowerCase() === x.name.toLowerCase());
   const wid = m.added?.[x.name];
@@ -1558,6 +1593,23 @@ function aiAct(act, el) {
     r.m.added = { ...r.m.added, [r.x.name]: w.id };
     save(); AI.saveChats(aiChats()); render();
     if (!wasDemo) toast('Добавлено в тренировку');
+  }
+  else if (act === 'ai-plan' || act === 'ai-plan-all') {
+    const m = aiCurrent()?.msgs[+el.dataset.i];
+    if (!m) return;
+    const { workouts } = AI.parseExercises(m.text);
+    const js = act === 'ai-plan' ? [+el.dataset.j] : workouts.map((_, j) => j);
+    const days = [];
+    for (const j of js) {
+      const wk = workouts[j];
+      if (!wk || (m.planned?.[j] && state.workouts.some((w) => w.id === m.planned[j]))) continue;
+      const k = aiPlanDay(wk, j);
+      const w = savePlanned(k, wk.title, wk.exercises);
+      m.planned = { ...m.planned, [j]: w.id };
+      days.push(dayLabel(k));
+    }
+    save(); AI.saveChats(aiChats()); render();
+    if (days.length) toast(days.length === 1 ? `Сохранено в календарь: ${days[0]}` : `Сохранено в календарь: ${days.length} тренировки`);
   }
   else if (act === 'ai-ex-gym') {
     const r = aiExFrom(el);
@@ -1961,7 +2013,7 @@ document.addEventListener('click', (ev) => {
     case 'play': startPlayer(el.dataset.id); break;
     case 'tpl-start': startTemplate(el.dataset.id); break;
     case 'ai-send': case 'ai-suggest': case 'ai-new': case 'ai-history': case 'ai-think': case 'ai-copy': case 'ai-retry':
-    case 'ai-photo': case 'ai-photo-x': case 'ai-ex-add': case 'ai-ex-workout': case 'ai-ex-gym':
+    case 'ai-photo': case 'ai-photo-x': case 'ai-ex-add': case 'ai-ex-workout': case 'ai-ex-gym': case 'ai-plan': case 'ai-plan-all':
       ev.preventDefault(); aiAct(act, el); break;
     case 'ai-model': AI.setMode(el.dataset.m); render(); break;
     case 'ai-key': aiKeySheet(); break;

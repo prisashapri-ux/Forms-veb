@@ -44,12 +44,44 @@ export const SYSTEM_PROMPT = `Ты тренер-советник в прилож
 Если пользователь прислал фото тренажёра или снаряда: назови тренажёр, какие мышцы он нагружает, как его настроить (сиденье, валики, рукояти) и 3–4 главных пункта техники. Предложи стартовый вес и подходы с учётом его рабочих весов в похожих упражнениях. Если на фото не тренажёр или его не разобрать, так и скажи и попроси снять ещё раз.
 Когда советуешь конкретное упражнение для записи (по фото или по просьбе добавить), в самом конце ответа добавь служебные строки, по одной на упражнение, ровно в таком виде:
 [[exercise {"name":"Жим ногами","group":"legs","sets":3,"reps":"10-12","weight":60}]]
-group один из: chest, back, legs, glutes, shoulders, biceps, triceps, core, cardio, other. weight в кг, 0 если без веса. Если упражнение есть в списке приложения, бери название из списка дословно. Не больше 4 таких строк, не упоминай их в тексте.`;
+group один из: chest, back, legs, glutes, shoulders, biceps, triceps, core, cardio, other. weight в кг, 0 если без веса. Если упражнение есть в списке приложения, бери название из списка дословно. Не больше 4 таких строк, не упоминай их в тексте.
+
+Когда подбираешь целую тренировку или план на несколько дней, в самом конце ответа добавь по одной служебной строке на каждую тренировку, ровно в таком виде, одной строкой:
+[[workout {"date":"2026-11-15","title":"Ноги и ягодицы","exercises":[{"name":"Жим ногами","group":"legs","sets":3,"reps":"10-12","weight":60}]}]]
+date в формате ГГГГ-ММ-ДД: день, на который ты советуешь эту тренировку (сегодняшняя дата указана ниже); если день не важен, ставь ближайший подходящий. До 8 упражнений в тренировке и до 7 таких строк. Веса бери из его рабочих весов. В тексте ответа скажи, что тренировки можно сохранить в календарь кнопкой под ответом. Тогда строки [[exercise]] не добавляй.`;
+
+/** Сегодняшняя дата для ИИ, чтобы он ставил правильные дни в план. */
+export function todayLine(now = new Date()) {
+  const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return `Сегодня ${key}, ${now.toLocaleDateString('ru-RU', { weekday: 'long' })}.`;
+}
+
+function cleanEx(o) {
+  const name = String(o?.name || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!name) return null;
+  const m = String(o.reps ?? '').match(/(\d+)(?:\s*[-–]\s*(\d+))?/);
+  const lo = m ? Math.min(100, Math.max(1, +m[1])) : 10;
+  const hi = m && m[2] ? Math.min(100, Math.max(lo, +m[2])) : lo;
+  return {
+    name, group: Object.hasOwn(GROUPS, o.group) ? o.group : 'other',
+    sets: Math.min(10, Math.max(1, Math.round(+o.sets) || 3)), reps: [lo, hi],
+    weight: Math.min(1000, Math.max(0, Math.round((+o.weight || 0) * 2) / 2)),
+  };
+}
 
 /** Разбирает служебные строки [[exercise {...}]] из ответа. Возвращает текст без них и список упражнений. */
 export function parseExercises(text) {
   const exercises = [];
-  const clean = String(text).replace(/\[\[\s*exercise\s*(\{[^\n]*?\})\s*\]\]/g, (_, json) => {
+  const workouts = [];
+  const clean = String(text).replace(/\[\[\s*workout\s*(\{[^\n]*\})\s*\]\]/g, (_, json) => {
+    try {
+      const o = JSON.parse(json);
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(String(o.date || '')) ? o.date : null;
+      const exs = (Array.isArray(o.exercises) ? o.exercises : []).map(cleanEx).filter(Boolean).slice(0, 10);
+      if (exs.length && workouts.length < 7) workouts.push({ date, title: String(o.title || 'Тренировка').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Тренировка', exercises: exs });
+    } catch { /* битая строка: просто убираем */ }
+    return '';
+  }).replace(/\[\[\s*exercise\s*(\{[^\n]*?\})\s*\]\]/g, (_, json) => {
     try {
       const o = JSON.parse(json);
       const name = String(o.name || '').replace(/\s+/g, ' ').trim().slice(0, 60);
@@ -65,7 +97,7 @@ export function parseExercises(text) {
     } catch { /* битая строка: просто убираем */ }
     return '';
   }).replace(/\n{3,}/g, '\n\n').trim();
-  return { text: clean, exercises };
+  return { text: clean, exercises: workouts.length ? [] : exercises, workouts };
 }
 
 const d2 = (d) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getFullYear()).slice(2)}`;
@@ -116,7 +148,7 @@ export function aiSummary(sessions, body, tips, profile = {}, now = new Date()) 
  * прикладывается к сообщению пользователя по формату OpenAI: [{type:'text'}, {type:'image_url'}].
  */
 export function buildMessages(history, summary, exerciseNames = [], machines = []) {
-  const system = exerciseNames.length ? `${SYSTEM_PROMPT}\n\nУпражнения в приложении: ${exerciseNames.join(', ')}.` : SYSTEM_PROMPT;
+  const system = `${SYSTEM_PROMPT}\n\n${todayLine()}${exerciseNames.length ? `\nУпражнения в приложении: ${exerciseNames.join(', ')}.` : ''}`;
   return [{ role: 'system', content: system }, ...history.map((m, i) => {
     const text = i === 0 && m.role === 'user' ? `Мои данные:\n${summary}\n\nВопрос: ${m.text}` : m.text;
     const img = m.role === 'user' ? m.image || m.thumb : null;

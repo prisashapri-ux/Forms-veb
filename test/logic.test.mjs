@@ -289,3 +289,14 @@ test('график «Тело и тренировки» держит линии 
   assert.equal(ys.length, 3);
   for (const y of ys) assert.ok(y >= 0 && y <= 170, `y=${y}`);
 });
+
+test('ИИ: план тренировок из служебных строк', async () => {
+  const AI = await import('../src/ai.js');
+  const r = AI.parseExercises('План на неделю.\n[[workout {"date":"2026-11-15","title":"Ноги","exercises":[{"name":"Жим ногами","group":"legs","sets":4,"reps":"10-12","weight":100},{"name":"Выпады","group":"legs","sets":3,"reps":12}]}]]\n[[workout {"title":"Спина","exercises":[{"name":"Тяга верхнего блока","group":"back","sets":3,"reps":"8-10","weight":55}]}]]\n[[workout {битое}]]');
+  assert.equal(r.text, 'План на неделю.');
+  assert.equal(r.workouts.length, 2);
+  assert.equal(r.workouts[0].date, '2026-11-15');
+  assert.deepEqual(r.workouts[0].exercises[0].reps, [10, 12]);
+  assert.equal(r.workouts[1].date, null);
+  assert.match(AI.todayLine(new Date(2026, 10, 12)), /^Сегодня 2026-11-12, четверг/);
+});
