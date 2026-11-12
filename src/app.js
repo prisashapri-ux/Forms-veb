@@ -1696,6 +1696,18 @@ function viewFood() {
 }
 
 // ───────── Настройки ─────────
+const APP_VERSION = (new URL(import.meta.url).searchParams.get('v') || 'dev').replace('forma-', '');
+
+/** Ручное обновление: сохраняем данные, сбрасываем кэш сайта и перезапускаемся с новой версией из сети. */
+async function appUpdate() {
+  if (!navigator.onLine) { toast('Нет интернета, обновить не получится'); return; }
+  toast('Обновляю…');
+  await flush();
+  try { await (await navigator.serviceWorker?.getRegistration())?.update(); } catch { /* без сервис-воркера */ }
+  try { for (const k of await caches.keys()) await caches.delete(k); } catch { /* кэша нет */ }
+  setTimeout(() => location.reload(), 400);
+}
+
 function viewSettings() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const counts = `${state.measurements.length} ${plural(state.measurements.length, 'замер', 'замера', 'замеров')}, ${state.workouts.length} ${plural(state.workouts.length, 'тренировка', 'тренировки', 'тренировок')}, ${state.food.length} ${plural(state.food.length, 'запись', 'записи', 'записей')} еды`;
@@ -1717,7 +1729,10 @@ function viewSettings() {
         <p class="small muted" style="margin:0">Запускается, когда отмечаешь подход выполненным.</p></section>
       <section class="card stack"><h2>Данные</h2>${state.demo ? '<button class="btn secondary" data-act="clear-demo">Удалить примерные данные</button>' : '<button class="btn ghost" data-act="load-demo">Показать примерные данные</button>'}
         <button class="btn danger" data-act="erase">Стереть всё</button></section>
-      <p class="small muted" style="text-align:center">Форма для браузера · данные не покидают устройство</p>`,
+      <section class="card stack"><h2>Обновление</h2>
+        <p class="small muted" style="margin:0">Новая версия подтягивается сама при каждом запуске, если есть интернет. Ярлык переустанавливать не нужно: при удалении ярлыка iPhone стирает и данные приложения.</p>
+        <button class="btn secondary" data-act="app-update">Обновить сейчас</button></section>
+      <p class="small muted" style="text-align:center">Форма для браузера · версия ${esc(APP_VERSION)} · данные не покидают устройство</p>`,
   };
 }
 
@@ -1821,6 +1836,7 @@ document.addEventListener('click', (ev) => {
     case 'import-pdf': pickFile('application/pdf,.pdf', importPdf); break;
     case 'import-backup': pickFile('application/json,.json', importBackup); break;
     case 'export': exportBackup(); break;
+    case 'app-update': appUpdate(); break;
     case 'load-demo':
       if (state.measurements.length || state.workouts.length) { toast('Примерные данные показываются только в пустом приложении'); break; }
       state = demoState(); save(); render(true); break;
