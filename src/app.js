@@ -1282,6 +1282,7 @@ function viewHome() {
   const card = (h, wide = false) => `<a class="home-card ${wide ? 'wide' : ''}" href="#plan-${h.id}" style="--c1:${h.c1};--c2:${h.c2}">
       ${figureSVG(h.items[0][0], groupOf(h.items[0][0]))}
       <span class="meta">${homeMinutes(h)} мин · ${esc(h.equipment.toLowerCase())}</span><span class="ttl">${esc(h.title)}</span></a>`;
+  const base = HOME.filter((h) => h.group !== 'bar'), bar = HOME.filter((h) => h.group === 'bar');
   const recent = [...homeWs].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5);
   return {
     title: 'Дома', top: topTitle('Дома'),
@@ -1290,7 +1291,9 @@ function viewHome() {
         <div class="ring-legend"><div><div class="l" style="color:var(--pink)">Тренировки дома</div><div class="v">${thisWeek.length}<small> / 3 за неделю</small></div></div>
         <div><div class="l" style="color:var(--green)">Минуты</div><div class="v">${mins}<small> / 60</small></div></div></div></section>
       <div class="section-title">Готовые тренировки</div>
-      <div class="home-grid">${card(HOME[0], true)}${HOME.slice(1).map((h) => card(h)).join('')}</div>
+      <div class="home-grid">${card(base[0], true)}${base.slice(1).map((h) => card(h)).join('')}</div>
+      <div class="section-title">На перекладине</div>
+      <div class="home-grid">${card(bar[0], true)}${bar.slice(1).map((h) => card(h)).join('')}</div>
       <div class="section-title">Мои тренировки</div>
       <div class="home-grid">${(state.templates || []).filter((t) => t.kind === 'home').map((t) => planById(t.id)).filter((h) => h.items.length).map((h) => card(h)).join('')}
         <a class="home-card add" href="#build-home"><span class="plus">${icon.plus}</span><span class="ttl">Собрать свою</span><span class="meta">упражнения, время и круги</span></a></div>
