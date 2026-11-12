@@ -755,7 +755,7 @@ function machineSheet(m, { isNew = false, found = false, tip = '' } = {}) {
       <div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(tip || L.setupHint(m).tip)}</span></div>
       <div class="section-caption" style="margin:4px 0 -4px">Мои уровни</div>
       <div class="m-adjust">${(() => { const f = L.setupHint(m).fields; const a = m.adjust || {}; return L.ADJUST.filter(([k]) => !f.length || f.includes(k) || a[k]).map(([k, t]) => `<label><span>${t}</span><input data-adj="${k}" inputmode="text" maxlength="12" placeholder="—" value="${esc(a[k] || '')}"></label>`).join(''); })()}</div>
-      ${m.exercises?.length ? `<div class="section-caption" style="margin:4px 0 -4px">Упражнения</div><div class="card list m-exs">${m.exercises.map((x, i) => `<div class="item">${thumb(x.name)}<span class="grow"><span class="title">${esc(x.name)}</span><div class="sub">${esc(x.muscle || L.GROUPS[x.group])}${(() => { const r = lastResult(x.name); return r ? ` · ${esc(r)}` : ''; })()}</div></span><button class="icon-btn" data-m-ex="${i}" aria-label="Добавить в тренировку: ${esc(x.name)}">${icon.plus}</button></div>`).join('')}</div>` : ''}
+      ${m.exercises?.length ? `<div class="section-caption" style="margin:4px 0 -4px">Упражнения</div><div class="card list m-exs">${m.exercises.map((x, i) => `<div class="item">${thumb(x.name, { animate: !!EX_VIDEO[x.name] })}<span class="grow"><span class="title">${esc(x.name)}</span><div class="sub">${esc(x.muscle || L.GROUPS[x.group])}${(() => { const r = lastResult(x.name); return r ? ` · ${esc(r)}` : ''; })()}</div></span><button class="icon-btn" data-m-ex="${i}" aria-label="Добавить в тренировку: ${esc(x.name)}">${icon.plus}</button></div>`).join('')}</div>` : ''}
       ${last ? `<p class="small muted" style="margin:0">Прошлый раз ${esc(last)}</p>` : ''}
       <div class="field"><label for="m-name">Название</label><input id="m-name" value="${esc(m.name)}" maxlength="60" placeholder="Например, жим ногами 45°"></div>
       <div class="field"><label for="m-ex">Упражнение</label><input id="m-ex" list="m-ex-list" value="${esc(m.exercise)}" maxlength="60"><datalist id="m-ex-list">${state.exercises.map((e) => `<option value="${esc(e.name)}">`).join('')}</datalist></div>
@@ -1029,6 +1029,18 @@ const EX_VIDEO = {
   'Ягодичный мост': 'anim-ddx-yagodichny-most.mp4',
   'Молотки': 'anim-ddx-gantely.mp4',
   'Подъём ног в висе': 'anim-ddx-stoyka-nog.mp4',
+  // гантели: у каждого упражнения своя анимация
+  'Молот с гантелями': 'anim-ddx-gantely.mp4',
+  'Жим гантелей от плеч': 'anim-db-shoulder-press.mp4',
+  'Жим гантелей сидя': 'anim-db-shoulder-press.mp4',
+  'Отведение плеча с гантелями': 'anim-db-lateral.mp4',
+  'Махи гантелями в стороны': 'anim-db-lateral.mp4',
+  'Румынская тяга с гантелями': 'anim-db-rdl.mp4',
+  'Тяга гантели к поясу с упором': 'anim-db-row.mp4',
+  'Тяга гантели в наклоне': 'anim-db-row.mp4',
+  'Французский жим с гантелями лёжа': 'anim-db-skull.mp4',
+  'Выпады с гантелями с акцентом на ягодицы': 'anim-db-lunge.mp4',
+  'Выпады с гантелями': 'anim-db-lunge.mp4',
 };
 /** Анимация конкретной модели тренажёра из базы зала: одна модель, одно видео. */
 const MACHINE_VIDEO = {
