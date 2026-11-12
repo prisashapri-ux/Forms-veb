@@ -9,6 +9,7 @@ import { figureSVG } from './figures.js';
 import { HOME, HOME_CATALOG, homeById, homeSteps, homeMinutes, homeWorkout, homeScaled, HOME_LEVEL_EVERY, countable } from './home.js';
 import { PULLUP_CATALOG } from './extras.js';
 import * as AI from './ai.js';
+import { openTour, tourOpen } from './tour.js';
 
 Object.assign(CATALOG, HOME_CATALOG, PULLUP_CATALOG);
 
@@ -2150,6 +2151,9 @@ function viewSettings() {
   return {
     title: 'Настройки', top: topBack('#body', 'Настройки'),
     html: `${standalone ? '' : `<section class="card"><h2>Поставить на экран «Домой»</h2><ol class="steps"><li>Открой эту страницу в Safari.</li><li>Нажми «Поделиться» внизу экрана.</li><li>Выбери «На экран „Домой“» и нажми «Добавить».</li></ol><p class="small muted" style="margin:10px 0 0">Так «Форма» открывается как приложение, работает без интернета, и Safari не стирает её данные.</p></section>`}
+      <section class="card stack"><h2>Обучение</h2>
+        <p class="small muted" style="margin:0">Короткий тур по разделам «Формы»: что где находится и с чего начать.</p>
+        <button class="btn secondary" data-act="tour">Пройти обучение</button></section>
       <section class="card stack"><h2>Резервная копия</h2>
         <p class="small muted" style="margin:0">Все данные хранятся только в этом браузере: ${counts}. Копия в файле переносится между телефонами и в iOS-приложение «Форма», и обратно.</p>
         ${state.settings.lastBackup ? `<p class="small muted" style="margin:0">Последняя копия: ${fmtDay(state.settings.lastBackup)}.</p>` : ''}
@@ -2278,6 +2282,7 @@ document.addEventListener('click', (ev) => {
     case 'import-backup': pickFile('application/json,.json', importBackup); break;
     case 'export': exportBackup(); break;
     case 'app-update': appUpdate(); break;
+    case 'tour': startTour(); break;
     case 'undo-restore':
       confirmSheet('Вернуть прежние данные?', 'Данные станут такими, какими были до восстановления из файла. То, что ты записал после восстановления, пропадёт.', 'Вернуть', () => {
         loadSnapshot().then((snap) => {
@@ -2444,6 +2449,18 @@ document.addEventListener('keydown', (ev) => {
   if (nextIn && (ev.target.dataset.in === 'weight' || (ev.target.dataset.in === 'reps' && nextIn.dataset.in === 'level'))) nextIn.focus(); else ev.target.blur();
 });
 
+// ───────── Обучение ─────────
+function startTour() {
+  closeSheet();
+  openTour({
+    icon, go,
+    color: (tab) => TABS.find((t) => t[0] === tab)?.[3],
+    empty: !state.measurements.length && !state.workouts.length,
+    standalone: matchMedia('(display-mode: standalone)').matches || !!navigator.standalone,
+    onClose: () => { if (!state.settings.tourDone) { state.settings.tourDone = new Date().toISOString(); save(); } },
+  });
+}
+
 // ───────── Запуск ─────────
 async function start() {
   let saved = null;
@@ -2455,6 +2472,8 @@ async function start() {
   for (const [name, group] of L.DEFAULT_EXERCISES) if (!state.exercises.some((e) => e.name === name)) state.exercises.push({ name, group, isCustom: false, note: '' });
   render(true);
   window.__formaBooted = true;
+  // Новому человеку (нет данных и обучение ещё не пройдено) сразу показываем приветствие.
+  if (!state.settings.tourDone && !state.measurements.length && !state.workouts.length && !state.demo) startTour();
   loadSnapshot().then((snap) => { if (snap?.at && Date.now() - new Date(snap.at) < 30 * 864e5) snapAt = snap.at; });
   persist();
   syncGymBase();
@@ -2464,7 +2483,7 @@ async function start() {
     let reloaded = false;
     // Не перезагружаемся посреди дела: ИИ читает табло, открыт таймер, чат или окно, идёт тренировка.
     // Тогда обновление ждёт, пока приложение свернут или откроют другой экран.
-    const busyNow = () => !!(player.el || aiState.busy || cardioBusy || gymBusy || sheetClose || route().name === 'w');
+    const busyNow = () => !!(tourOpen() || player.el || aiState.busy || cardioBusy || gymBusy || sheetClose || route().name === 'w');
     const tryReload = () => { if (pendingReload && !reloaded && !busyNow()) { reloaded = true; flush(); location.reload(); } };
     let pendingReload = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
