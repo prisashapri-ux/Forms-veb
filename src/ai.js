@@ -48,7 +48,11 @@ group один из: chest, back, legs, glutes, shoulders, biceps, triceps, core
 
 Когда подбираешь целую тренировку или план на несколько дней, в самом конце ответа добавь по одной служебной строке на каждую тренировку, ровно в таком виде, одной строкой:
 [[workout {"date":"2026-11-15","title":"Ноги и ягодицы","exercises":[{"name":"Жим ногами","group":"legs","sets":3,"reps":"10-12","weight":60}]}]]
-date в формате ГГГГ-ММ-ДД: день, на который ты советуешь эту тренировку (сегодняшняя дата указана ниже); если день не важен, ставь ближайший подходящий. До 8 упражнений в тренировке и до 7 таких строк. Веса бери из его рабочих весов. В тексте ответа скажи, что тренировки можно сохранить в календарь кнопкой под ответом. Тогда строки [[exercise]] не добавляй.`;
+date в формате ГГГГ-ММ-ДД: день, на который ты советуешь эту тренировку (сегодняшняя дата указана ниже); если день не важен, ставь ближайший подходящий. До 8 упражнений в тренировке и до 7 таких строк. Веса бери из его рабочих весов. В тексте ответа скажи, что тренировки можно сохранить в календарь кнопкой под ответом. Тогда строки [[exercise]] не добавляй.
+
+Ниже может быть список запланированных тренировок пользователя из календаря, у каждой есть id. Это его план: учитывай его, когда советуешь. Чтобы изменить запланированную тренировку (состав, подходы, веса, название или день), выведи строку [[workout]] с полем "replace" и полным новым составом:
+[[workout {"replace":"<id>","date":"2026-11-15","title":"Ноги","exercises":[...]}]]
+Чтобы убрать тренировку из календаря: [[workout {"replace":"<id>","remove":true}]]. id бери из списка дословно. Изменения применятся, только когда пользователь нажмёт кнопку под ответом, скажи ему об этом.`;
 
 /** Сегодняшняя дата для ИИ, чтобы он ставил правильные дни в план. */
 export function todayLine(now = new Date()) {
@@ -78,7 +82,10 @@ export function parseExercises(text) {
       const o = JSON.parse(json);
       const date = /^\d{4}-\d{2}-\d{2}$/.test(String(o.date || '')) ? o.date : null;
       const exs = (Array.isArray(o.exercises) ? o.exercises : []).map(cleanEx).filter(Boolean).slice(0, 10);
-      if (exs.length && workouts.length < 7) workouts.push({ date, title: String(o.title || 'Тренировка').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Тренировка', exercises: exs });
+      const replace = /^[\w-]{4,40}$/.test(String(o.replace || '')) ? String(o.replace) : null;
+      const remove = !!(replace && o.remove === true);
+      const title = String(o.title || '').replace(/\s+/g, ' ').trim().slice(0, 50);
+      if ((exs.length || remove) && workouts.length < 7) workouts.push({ date, title: title || (replace ? '' : 'Тренировка'), exercises: remove ? [] : exs, ...(replace ? { replace } : {}), ...(remove ? { remove } : {}) });
     } catch { /* битая строка: просто убираем */ }
     return '';
   }).replace(/\[\[\s*exercise\s*(\{[^\n]*?\})\s*\]\]/g, (_, json) => {
@@ -143,12 +150,26 @@ export function aiSummary(sessions, body, tips, profile = {}, now = new Date()) 
   return lines.join('\n');
 }
 
+/** Запланированные тренировки из календаря для ИИ, с id, чтобы он мог их менять. ws: {id, date, title, exercises:[{name, sets:[{weight, reps}]}]}. */
+export function plannedText(ws, now = new Date()) {
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const list = ws.filter((w) => new Date(w.date) >= today).sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 14);
+  if (!list.length) return 'Запланированных тренировок в календаре нет.';
+  const lines = ['Запланированные тренировки в календаре (ещё не выполнены):'];
+  for (const w of list) {
+    const d = new Date(w.date); const wd = d.toLocaleDateString('ru-RU', { weekday: 'short' });
+    const exs = w.exercises.map((e) => { const s = e.sets || []; const wt = s.find((q) => q.weight)?.weight; return `${e.name} ${s.length}×${s[0]?.reps ?? '?'}${wt ? ` · ${num(wt, 1)} кг` : ''}`; });
+    lines.push(`- id=${w.id}, ${wd} ${d2(d)}, ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}, «${w.title}»: ${exs.join('; ') || 'без упражнений'}`);
+  }
+  return lines.join('\n');
+}
+
 /**
  * Сообщения для API: первый вопрос уходит вместе со сводкой. Фото (m.image или уменьшенная m.thumb)
  * прикладывается к сообщению пользователя по формату OpenAI: [{type:'text'}, {type:'image_url'}].
  */
-export function buildMessages(history, summary, exerciseNames = [], machines = []) {
-  const system = `${SYSTEM_PROMPT}\n\n${todayLine()}${exerciseNames.length ? `\nУпражнения в приложении: ${exerciseNames.join(', ')}.` : ''}`;
+export function buildMessages(history, summary, exerciseNames = [], machines = [], planned = '') {
+  const system = `${SYSTEM_PROMPT}\n\n${todayLine()}${exerciseNames.length ? `\nУпражнения в приложении: ${exerciseNames.join(', ')}.` : ''}${planned ? `\n\n${planned}` : ''}`;
   return [{ role: 'system', content: system }, ...history.map((m, i) => {
     const text = i === 0 && m.role === 'user' ? `Мои данные:\n${summary}\n\nВопрос: ${m.text}` : m.text;
     const img = m.role === 'user' ? m.image || m.thumb : null;
@@ -197,19 +218,19 @@ async function post(fetchFn, key, body) {
  * Вопрос к DeepSeek. Если аккаунту недоступна deepseek-flash, один раз повторяет на старой
  * deepseek-chat: она без фото, поэтому снимки заменяются пометкой.
  */
-export async function ask(history, summary, fetchFn = fetch, exerciseNames = [], machines = []) {
+export async function ask(history, summary, fetchFn = fetch, exerciseNames = [], machines = [], planned = '') {
   const key = getKey();
   if (!key) throw new Error('Добавь ключ DeepSeek в настройках.');
   const think = isThinking();
   let { res, json } = await post(fetchFn, key, {
     model: API_MODEL, thinking: { type: think ? 'enabled' : 'disabled' },
-    max_tokens: think ? 8000 : 2000, messages: buildMessages(history, summary, exerciseNames, machines),
+    max_tokens: think ? 8000 : 2000, messages: buildMessages(history, summary, exerciseNames, machines, planned),
   });
   const modelErr = !res.ok && [400, 404, 422].includes(res.status) && /model/i.test(String(json?.error?.message || ''));
   if (modelErr) {
     const hadPhoto = history.some((m) => m.image || m.thumb);
     const plain = history.map(({ image, thumb, ...m }) => (image || thumb ? { ...m, text: `${m.text}\n(К сообщению приложено фото, но эта модель его не видит.)` } : m));
-    ({ res, json } = await post(fetchFn, key, { model: LEGACY_MODEL, max_tokens: 2000, messages: buildMessages(plain, summary, exerciseNames) }));
+    ({ res, json } = await post(fetchFn, key, { model: LEGACY_MODEL, max_tokens: 2000, messages: buildMessages(plain, summary, exerciseNames, [], planned) }));
     if (res.ok && hadPhoto) json = { ...json, legacyNoPhoto: true };
   }
   if (!res.ok) throw new Error(`${ERR[res.status] || `Ошибка ${res.status}.`}${json?.error?.message ? ` (${String(json.error.message).slice(0, 160)})` : ''}`);

@@ -1597,6 +1597,7 @@ const ADVISOR_CHECKS = [
   ['clock', 'Замеры', 'Давно не было InBody или замеры сделаны в разных условиях.'],
 ];
 
+const aiPlannedNow = () => AI.plannedText(state.workouts.filter((w) => w.planned && !w.finishedAt));
 function aiSummaryNow() {
   const ws = doneWs().filter((w) => w.exercises.length);
   const prof = [...state.measurements].reverse().find((m) => m.age || m.heightCm) || {};
@@ -1650,7 +1651,7 @@ function viewAI() {
       <textarea id="ai-input" rows="1" placeholder="${aiState.photo ? 'Что спросить про фото? Можно оставить пустым' : 'Спроси советника'}" ${aiState.busy ? 'disabled' : ''}>${esc(aiState.draft)}</textarea>
       <div class="row2"><button class="icon-btn plain cam" data-act="ai-photo" aria-label="Сфотографировать или выбрать фото" ${aiState.busy ? 'disabled' : ''}>${icon.camera}</button>
         <button class="pill ${thinking ? 'on' : ''}" data-act="ai-think" aria-pressed="${thinking}">${icon.bolt} Думающая</button>
-        <details class="ai-peek"><summary>Что видит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}</pre></details>
+        <details class="ai-peek"><summary>Что видит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}\n\n${esc(aiPlannedNow())}</pre></details>
         <button class="send" data-act="ai-send" aria-label="Отправить" ${aiState.busy ? 'disabled' : ''}>${icon.up}</button></div></div></div>` : '';
   return { title: 'ИИ-советник', cls: 'ai-view', top: `${left}<h1 class="small">ИИ-советник</h1>${right}`, html: body, foot: composer, after: () => { autoGrow(); fitViewport(); if (chat?.msgs.length) feedToEnd(); } };
 }
@@ -1669,14 +1670,44 @@ function aiPlanCards(workouts, m, i) {
   if (!workouts.length) return '';
   const saved = (j) => { const id = m.planned?.[j]; return id && state.workouts.find((w) => w.id === id); };
   const cards = workouts.map((wk, j) => {
+    if (wk.replace) return aiEditCard(wk, m, i, j);
     const w = saved(j);
     const k = w ? dayKeyOf(w.date) : aiPlanDay(wk, j);
     return `<div class="ai-plan"><div class="head"><span class="ai-plan-date">${esc(dayLabel(k))}</span><b>${esc(wk.title)}</b></div>
       <ol>${wk.exercises.map((x) => `<li>${esc(x.name)} <span class="muted">${x.sets}×${x.reps[0] === x.reps[1] ? x.reps[0] : `${x.reps[0]}–${x.reps[1]}`}${x.weight ? ` · ${num(x.weight, 1)} кг` : ''}</span></li>`).join('')}</ol>
       ${w ? `<div class="btns"><a class="btn small" href="#w-${w.id}">${icon.check} В календаре · открыть</a><button class="btn small ghost" data-act="remind-id" data-id="${w.id}">${icon.bell} Напомнить</button></div>` : `<button class="btn small" data-act="ai-plan" data-i="${i}" data-j="${j}">${icon.calendar} В календарь на ${esc(dayLabel(k))}</button>`}</div>`;
   }).join('');
-  const left = workouts.filter((_, j) => !saved(j)).length;
-  return `${cards}${workouts.length > 1 && left > 1 ? `<button class="btn block" data-act="ai-plan-all" data-i="${i}">${icon.plus} Сохранить все ${left} в календарь</button>` : ''}`;
+  const left = workouts.filter((wk, j) => (wk.replace ? !m.applied?.[j] && aiTarget(wk) : !saved(j))).length;
+  return `${cards}${workouts.length > 1 && left > 1 ? `<button class="btn block" data-act="ai-plan-all" data-i="${i}">${icon.plus} ${workouts.some((wk) => wk.replace) ? `Применить все изменения (${left})` : `Сохранить все ${left} в календарь`}</button>` : ''}`;
+}
+
+/** Запланированная тренировка, которую ИИ предлагает изменить. */
+const aiTarget = (wk) => state.workouts.find((w) => w.id === wk.replace && w.planned && !w.finishedAt) || null;
+const exLine = (x) => `${esc(x.name)} <span class="muted">${x.sets}×${x.reps[0] === x.reps[1] ? x.reps[0] : `${x.reps[0]}–${x.reps[1]}`}${x.weight ? ` · ${num(x.weight, 1)} кг` : ''}</span>`;
+/** Карточка изменения запланированной тренировки: было → стало, применяется кнопкой. */
+function aiEditCard(wk, m, i, j) {
+  const w = aiTarget(wk);
+  if (m.applied?.[j]) {
+    const now = state.workouts.find((q) => q.id === wk.replace);
+    return `<div class="ai-plan"><div class="head"><b>${wk.remove ? 'Убрано из календаря' : 'Изменено в календаре'}</b></div>${now ? `<div class="btns"><a class="btn small" href="#w-${now.id}">${icon.check} Открыть</a></div>` : ''}</div>`;
+  }
+  if (!w) return `<div class="ai-plan"><div class="head"><b>Эта тренировка уже не в плане</b></div><p class="small muted" style="margin:0">Её выполнили, удалили или изменили раньше.</p></div>`;
+  const k = wk.date ? aiPlanDay(wk, j) : dayKeyOf(w.date);
+  const was = `${esc(dayLabel(dayKeyOf(w.date)))} · ${esc(w.title)}`;
+  if (wk.remove) return `<div class="ai-plan"><div class="head"><span class="ai-plan-date">${was}</span><b>Убрать из календаря</b></div><button class="btn small" data-act="ai-plan" data-i="${i}" data-j="${j}">${icon.x} Убрать</button></div>`;
+  return `<div class="ai-plan"><div class="head"><span class="ai-plan-date">Было: ${was}</span><b>${esc(dayLabel(k))} · ${esc(wk.title || w.title)}</b></div>
+    <ol>${wk.exercises.map((x) => `<li>${exLine(x)}</li>`).join('')}</ol>
+    <button class="btn small" data-act="ai-plan" data-i="${i}" data-j="${j}">${icon.check} Изменить в календаре</button></div>`;
+}
+/** Применяет изменение от ИИ к запланированной тренировке. */
+function applyPlanEdit(wk, j) {
+  const w = aiTarget(wk);
+  if (!w) return null;
+  if (wk.remove) { state.workouts = state.workouts.filter((q) => q !== w); return 'убрана'; }
+  if (wk.date) { const k = aiPlanDay(wk, j); const [y, mo, d] = k.split('-').map(Number); const at = toDate(w.date); at.setFullYear(y, mo - 1, d); w.date = at.toISOString(); }
+  if (wk.title) w.title = wk.title;
+  w.exercises = wk.exercises.map((x) => ({ name: aiEnsureExercise(x), sets: Array.from({ length: x.sets }, () => ({ weight: x.weight, reps: x.reps[0], isWarmup: false, isDone: false })) }));
+  return 'изменена';
 }
 
 /** Сохраняет тренировку от ИИ на день k как запланированную, не начиная её. */
@@ -1806,7 +1837,7 @@ async function aiRun(chat) {
   const model = AI.getMode();
   try {
     const names = state.exercises.map((e) => e.name);
-    const answer = await AI.ask(chat.msgs.filter((m) => !m.error).map(({ role, text, image, thumb }) => ({ role, text, image, thumb })), aiSummaryNow(), fetch, names, machines());
+    const answer = await AI.ask(chat.msgs.filter((m) => !m.error).map(({ role, text, image, thumb }) => ({ role, text, image, thumb })), aiSummaryNow(), fetch, names, machines(), aiPlannedNow());
     chat.msgs.push({ role: 'assistant', text: answer, model });
   } catch (e) {
     chat.msgs.push({ role: 'assistant', text: e.message, error: true });
@@ -1853,8 +1884,10 @@ function aiAct(act, el) {
     const { workouts } = AI.parseExercises(m.text);
     const js = act === 'ai-plan' ? [+el.dataset.j] : workouts.map((_, j) => j);
     const days = [];
+    let edits = 0;
     for (const j of js) {
       const wk = workouts[j];
+      if (wk?.replace) { if (!m.applied?.[j] && applyPlanEdit(wk, j)) { m.applied = { ...m.applied, [j]: true }; edits++; } continue; }
       if (!wk || (m.planned?.[j] && state.workouts.some((w) => w.id === m.planned[j]))) continue;
       const k = aiPlanDay(wk, j);
       const w = savePlanned(k, wk.title, wk.exercises);
@@ -1863,6 +1896,7 @@ function aiAct(act, el) {
     }
     save(); AI.saveChats(aiChats()); render();
     if (days.length) toast(days.length === 1 ? `Сохранено в календарь: ${days[0]}` : `Сохранено в календарь: ${days.length} тренировки`);
+    if (edits) toast(edits === 1 ? 'Календарь обновлён' : `Календарь обновлён: ${edits} изменения`);
   }
   else if (act === 'ai-ex-gym') {
     const r = aiExFrom(el);

@@ -301,6 +301,26 @@ test('ИИ: план тренировок из служебных строк', a
   assert.match(AI.todayLine(new Date(2026, 10, 12)), /^Сегодня 2026-11-12, четверг/);
 });
 
+test('ИИ: видит план из календаря и может его менять', async () => {
+  const AI = await import('../src/ai.js');
+  const r = AI.parseExercises('Меняю.\n[[workout {"replace":"mhz1abc","date":"2026-11-16","exercises":[{"name":"Жим ногами","group":"legs","sets":4,"reps":10,"weight":90}]}]]\n[[workout {"replace":"mhz2def","remove":true}]]\n[[workout {"replace":"bad id!","remove":true}]]');
+  assert.equal(r.workouts.length, 2);
+  assert.equal(r.workouts[0].replace, 'mhz1abc');
+  assert.equal(r.workouts[0].title, '');
+  assert.equal(r.workouts[1].remove, true);
+  assert.deepEqual(r.workouts[1].exercises, []);
+  const now = new Date(2026, 10, 12, 10);
+  const t = AI.plannedText([
+    { id: 'p1', date: new Date(2026, 10, 14, 18).toISOString(), title: 'Ноги', exercises: [{ name: 'Жим ногами', sets: [{ weight: 60, reps: 10 }, { weight: 60, reps: 10 }] }] },
+    { id: 'old', date: new Date(2026, 10, 1, 18).toISOString(), title: 'Старое', exercises: [] },
+  ], now);
+  assert.match(t, /id=p1, .*14\.11\.26.*«Ноги»: Жим ногами 2×10 · 60 кг/);
+  assert.doesNotMatch(t, /Старое/);
+  assert.match(AI.plannedText([], now), /нет/);
+  const msgs = AI.buildMessages([{ role: 'user', text: 'Привет' }], 'S', [], [], t);
+  assert.match(msgs[0].content, /id=p1/);
+});
+
 test('резервная копия сохраняет пометку «запланирована»', () => {
   const s = L.emptyState();
   s.workouts.push({ id: 'a', date: '2026-11-20T15:00:00.000Z', title: 'План', note: '', durationMinutes: null, programID: null, programDay: null, finishedAt: null, planned: true, exercises: [{ name: 'Жим штанги лёжа', sets: [{ weight: 60, reps: 8, isWarmup: false, isDone: false }] }] });
