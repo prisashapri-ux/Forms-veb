@@ -60,6 +60,7 @@ const icon = {
   copy: I('<rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>'),
   up: I('<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>'),
   info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>'),
+  lock: I('<rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/>'),
 };
 
 // Цвет группы мышц для картинок упражнений.
@@ -181,6 +182,7 @@ function render(scrollTop = false) {
   document.title = v.title ? `${v.title} · Форма` : 'Форма';
   if (scrollTop) scrollTo(0, 0); else scrollTo(0, y);
   v.after?.();
+  lockUpdate();
 }
 
 const todayEyebrow = () => new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -906,6 +908,7 @@ function finishWorkout(w, how) {
     delete w.startedAt;
   }
   ui.timer = null; drawTimer();
+  if (lock.id === w.id) lockStop();
   save(); go('diary'); toast('Тренировка сохранена');
 }
 
@@ -955,7 +958,7 @@ function viewWorkout(id) {
     html: `${w.planned ? `<section class="card plan-card"><div><b>Запланирована на ${esc(fmtDay(w.date))}, ${esc(toDate(w.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }))}</b>
           <div class="small muted">${w.exercises.length ? `Займёт ${estText(estWorkout(w))}. ` : ''}Время можно поменять ниже. Напоминание придёт из календаря iPhone.</div></div>
           <div class="grid2"><button class="btn" data-act="w-start">${icon.play} Начать сейчас</button><button class="btn secondary" data-act="w-remind">${icon.bell} Напомнить</button></div></section>`
-        : !w.finishedAt && w.startedAt ? `<section class="card w-clock-card"><span class="w-clock-ic">${icon.clock}</span><span class="grow"><span class="small muted">Идёт тренировка${w.exercises.length ? ` · план ${estText(estWorkout(w))}` : ''}</span><b id="w-clock" class="num">${clockText(w)}</b></span><button class="btn small" data-act="finish">${icon.check} Завершить</button></section>` : ''}
+        : !w.finishedAt && w.startedAt ? `<section class="card w-clock-card"><span class="w-clock-ic">${icon.clock}</span><span class="grow"><span class="small muted">Идёт тренировка${w.exercises.length ? ` · план ${estText(estWorkout(w))}` : ''}</span><b id="w-clock" class="num">${clockText(w)}</b></span><button class="btn small" data-act="finish">${icon.check} Завершить</button></section>${lockCard(w)}` : ''}
       <section class="card stack">
         <div class="field"><label for="w-title">Название</label><input id="w-title" data-win="title" value="${esc(w.title)}"></div>
         <div class="grid2"><div class="field"><label for="w-date">Дата и время</label><input id="w-date" type="datetime-local" data-win="date" value="${dateVal}"></div>
@@ -1110,7 +1113,7 @@ function exerciseMenu(ei) {
 let timerTick = null;
 let audioCtx = null;
 function startTimer(seconds) {
-  ui.timer = { endsAt: Date.now() + seconds * 1000, notified: false };
+  ui.timer = { endsAt: Date.now() + seconds * 1000, notified: false, total: seconds };
   try { audioCtx ||= new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume?.(); } catch { /* без звука */ }
   clearInterval(timerTick);
   timerTick = setInterval(drawTimer, 250);
@@ -1128,13 +1131,125 @@ function drawTimer() {
   const el = $('#timer');
   if (!ui.timer) { el.hidden = true; clearInterval(timerTick); return; }
   const left = Math.round((ui.timer.endsAt - Date.now()) / 1000);
-  if (left <= 0 && !ui.timer.notified) { ui.timer.notified = true; beep(); navigator.vibrate?.([200, 100, 200]); }
+  if (left <= 0 && !ui.timer.notified) { ui.timer.notified = true; beep(); navigator.vibrate?.([200, 100, 200]); lockUpdate(); }
   if (left < -60) { ui.timer = null; el.hidden = true; clearInterval(timerTick); return; }
   const a = Math.abs(left);
   el.hidden = false;
   el.classList.toggle('over', left <= 0);
   el.innerHTML = `<div class="inner" role="timer" aria-live="off"><span class="time">${left < 0 ? '+' : ''}${Math.floor(a / 60)}:${String(a % 60).padStart(2, '0')}</span>
     <span class="grow">${left > 0 ? 'Отдых' : 'Пора на подход'}</span><button data-act="timer-add" data-v="-15">−15</button><button data-act="timer-add" data-v="15">+15</button><button data-act="timer-stop" aria-label="Остановить таймер">✕</button></div>`;
+}
+
+// ───────── Экран блокировки ─────────
+// Веб на iPhone не может показать свои кнопки на заблокированном экране, кроме панели плеера.
+// Поэтому на время тренировки играет тихий звук, а панель плеера показывает текущий подход:
+// ⏭ отмечает подход и запускает отдых, ⏮ отменяет последнюю отметку, пауза ставит режим на паузу.
+const lock = { id: null, audio: null, marked: [], paused: false };
+const lockSupported = () => 'mediaSession' in navigator;
+const lockWorkout = () => (lock.id ? state.workouts.find((x) => x.id === lock.id && !x.finishedAt) : null);
+
+/** Следующий неотмеченный подход по порядку (разминочные тоже). */
+function lockNext(w) {
+  for (let ei = 0; ei < w.exercises.length; ei++) {
+    const sets = w.exercises[ei].sets;
+    for (let si = 0; si < sets.length; si++) if (!sets[si].isDone) return { ei, si };
+  }
+  return null;
+}
+function lockSetText(w, ei, si) {
+  const e = w.exercises[ei], s = e.sets[si];
+  const work = e.sets.filter((x) => !x.isWarmup);
+  const label = s.isWarmup ? 'разминка' : `подход ${work.indexOf(s) + 1} из ${work.length}`;
+  const isCardio = groupOf(e.name) === 'cardio' && !isHomeWorkout(w);
+  const what = isCardio ? [s.weight ? `${num(s.weight, 2)} мин` : '', s.reps ? `${s.reps} км` : ''].filter(Boolean).join(', ')
+    : isHomeWorkout(w) ? (s.reps ? `${s.reps} с` : '')
+    : [s.weight ? `${num(s.weight, 2)} кг` : '', s.reps ? `${s.reps} повт.` : ''].filter(Boolean).join(' × ');
+  return { name: e.name, label, what };
+}
+function lockUpdate() {
+  if (!lockSupported() || !lock.id) return;
+  const w = lockWorkout();
+  if (!w) { lockStop(); return; }
+  const ms = navigator.mediaSession;
+  const nx = lockNext(w);
+  const resting = ui.timer && ui.timer.endsAt > Date.now();
+  let title, artist;
+  if (!nx) { title = 'Все подходы отмечены'; artist = 'Открой «Форму» и заверши тренировку'; }
+  else {
+    const t = lockSetText(w, nx.ei, nx.si);
+    title = resting ? `Отдых · дальше ${t.name}` : `${t.name}`;
+    artist = [t.label, t.what].filter(Boolean).join(' · ');
+  }
+  try {
+    ms.metadata = new MediaMetadata({ title, artist, album: lock.paused ? 'Пауза · «Форма»' : '⏭ сделал · ⏮ отменить',
+      artwork: [{ src: 'icon-512.png', sizes: '512x512', type: 'image/png' }, { src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] });
+    ms.playbackState = lock.paused ? 'paused' : 'playing';
+    // Полоска на экране блокировки показывает, сколько отдыха прошло.
+    if (resting && ui.timer.total) ms.setPositionState?.({ duration: ui.timer.total, position: Math.min(ui.timer.total, Math.max(0, ui.timer.total - (ui.timer.endsAt - Date.now()) / 1000)), playbackRate: 1 });
+    else ms.setPositionState?.();
+  } catch { /* старый Safari: без полоски */ }
+}
+function lockMark() {
+  const w = lockWorkout();
+  const nx = w && lockNext(w);
+  if (!nx) { lockUpdate(); return; }
+  const S = w.exercises[nx.ei].sets[nx.si];
+  S.isDone = true;
+  if (w.planned) { delete w.planned; if (dayKeyOf(w.date) === dayKeyOf(new Date())) { w.date = new Date().toISOString(); w.startedAt = w.date; } }
+  lock.marked.push(S);
+  save();
+  if (currentWorkout()?.id === w.id) render();
+  if (!S.isWarmup) startTimer(state.settings.restSeconds || 120); else { ui.timer = null; drawTimer(); }
+  lockUpdate();
+}
+function lockUndo() {
+  const w = lockWorkout();
+  if (!w) return;
+  const all = w.exercises.flatMap((e) => e.sets);
+  let S;
+  while (lock.marked.length && !S) { const c = lock.marked.pop(); if (c.isDone && all.includes(c)) S = c; }
+  S ||= all.filter((x) => x.isDone).at(-1);
+  if (!S) return;
+  S.isDone = false;
+  save();
+  if (currentWorkout()?.id === w.id) render();
+  ui.timer = null; drawTimer();
+  lockUpdate();
+}
+function lockStart(w) {
+  if (!lockSupported()) { toast('Этот браузер не умеет показывать тренировку на экране блокировки'); return; }
+  lock.audio ||= Object.assign(new Audio('silence.m4a'), { loop: true, preload: 'auto' });
+  lock.id = w.id; lock.marked = []; lock.paused = false;
+  const ms = navigator.mediaSession;
+  const set = (a, f) => { try { ms.setActionHandler(a, f); } catch { /* действие не поддерживается */ } };
+  set('nexttrack', lockMark);
+  set('previoustrack', lockUndo);
+  set('play', () => { lock.paused = false; lock.audio.play().catch(() => {}); lockUpdate(); });
+  set('pause', () => { lock.paused = true; lock.audio.pause(); lockUpdate(); });
+  // Без перемотки iOS показывает ⏮ ⏭, а не «±10 секунд».
+  for (const a of ['seekbackward', 'seekforward', 'seekto']) set(a, null);
+  lock.audio.play().then(() => {
+    lockUpdate();
+    if (currentWorkout()?.id === w.id) render();
+    toast('Готово. Заблокируй телефон: ⏭ на панели плеера отмечает подход');
+  }).catch(() => { lock.id = null; toast('Не получилось включить: проверь, что звук не запрещён, и попробуй ещё раз'); });
+}
+function lockStop() {
+  lock.id = null; lock.marked = []; lock.paused = false;
+  lock.audio?.pause();
+  if (!lockSupported()) return;
+  const ms = navigator.mediaSession;
+  for (const a of ['nexttrack', 'previoustrack', 'play', 'pause']) { try { ms.setActionHandler(a, null); } catch { /* ignore */ } }
+  try { ms.metadata = null; ms.playbackState = 'none'; ms.setPositionState?.(); } catch { /* ignore */ }
+}
+function lockCard(w) {
+  if (!lockSupported() || w.finishedAt || w.planned || !w.exercises.length) return '';
+  const on = lock.id === w.id;
+  return `<section class="card lock-card ${on ? 'on' : ''}">
+    <div class="row"><span class="lock-ic">${on ? icon.next : icon.lock}</span><div class="grow"><b>${on ? 'Подходы отмечаются с экрана блокировки' : 'Отмечать подходы на заблокированном телефоне'}</b>
+    <div class="small muted">${on ? 'На панели плеера: ⏭ — подход сделан и пошёл отдых, ⏮ — отменить. Отметка ставит вес и повторы, которые записаны в подходе.' : 'Тренировка появится на экране блокировки, как песня. Музыка из других приложений на это время встанет на паузу.'}</div></div></div>
+    <button class="btn ${on ? 'secondary' : ''} block" data-act="${on ? 'lock-off' : 'lock-on'}">${on ? 'Выключить' : 'Включить'}</button>
+  </section>`;
 }
 
 // ───────── Программы и справочник ─────────
@@ -2131,7 +2246,10 @@ document.addEventListener('click', (ev) => {
       if (S.isDone && w.planned) { delete w.planned; if (dayKeyOf(w.date) === dayKeyOf(new Date())) { w.date = new Date().toISOString(); w.startedAt = w.date; } }
       save(); render();
       if (S.isDone) startTimer(state.settings.restSeconds || 120);
+      lockUpdate();
       break;
+    case 'lock-on': lockStart(w); break;
+    case 'lock-off': lockStop(); render(); toast('Экран блокировки выключен'); break;
     case 'cardio-photo': cardioPhoto(w, +el.dataset.e); break;
     case 'del-set': E.sets.splice(+el.dataset.s, 1); save(); render(); break;
     case 'add-set': { const last = E.sets.at(-1); E.sets.push(last ? { ...last, isWarmup: false, isDone: false } : { weight: 0, reps: 0, isWarmup: false, isDone: false }); save(); render(); break; }
@@ -2140,10 +2258,10 @@ document.addEventListener('click', (ev) => {
     case 'w-remind': remindWorkout(w); break;
     case 'remind-id': { const rw = state.workouts.find((x) => x.id === el.dataset.id); if (rw) remindWorkout(rw); break; }
     case 'del-workout':
-      confirmSheet('Удалить тренировку?', `«${w.title}» от ${fmtDay(w.date)} удалится вместе со всеми подходами.`, 'Удалить', () => { state.workouts = state.workouts.filter((x) => x.id !== w.id); save(); go('diary'); });
+      confirmSheet('Удалить тренировку?', `«${w.title}» от ${fmtDay(w.date)} удалится вместе со всеми подходами.`, 'Удалить', () => { state.workouts = state.workouts.filter((x) => x.id !== w.id); if (lock.id === w.id) lockStop(); save(); go('diary'); });
       break;
-    case 'timer-add': if (ui.timer) { ui.timer.endsAt += +el.dataset.v * 1000; ui.timer.notified = false; drawTimer(); } break;
-    case 'timer-stop': ui.timer = null; drawTimer(); break;
+    case 'timer-add': if (ui.timer) { ui.timer.endsAt += +el.dataset.v * 1000; ui.timer.notified = false; drawTimer(); lockUpdate(); } break;
+    case 'timer-stop': ui.timer = null; drawTimer(); lockUpdate(); break;
     case 'period': ui.period = +el.dataset.p; render(); break;
     case 'goal': state.settings.nutritionGoal = el.dataset.g; save(); render(); break;
     case 'preset': { const f = L.FOOD_PRESETS[+el.dataset.i]; if (state.demo) clearDemo(false); state.food.push({ id: L.uid(), date: new Date().toISOString(), ...f }); save(); render(); toast(`Добавлено: ${f.title}`); break; }
@@ -2219,6 +2337,7 @@ document.addEventListener('input', (ev) => {
     save();
     const stats = $('#w-stats');
     if (stats) stats.innerHTML = workoutStats(w).map((s) => `<span>${s}</span>`).join('');
+    lockUpdate();
   } else if (el.dataset.win) {
     const k = el.dataset.win;
     if (k === 'title') w.title = el.value.slice(0, 80) || 'Тренировка';
