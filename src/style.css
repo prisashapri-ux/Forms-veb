@@ -753,3 +753,11 @@ body.touring .toast { display: none; }
 .m-bar { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; padding: 8px; }
 .m-bar label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .m-bar input, .m-bar select { width: 100%; border: 0; background: var(--fill); border-radius: 8px; font: 600 17px var(--font); padding: 8px; color: var(--fg); }
+/* iPhone: после закрытия клавиатуры окно может остаться укороченным, --vfix возвращает панели вниз */
+.tabbar, .timer, .ai-composer { transform: translateY(var(--vfix, 0px)); }
+.sheet-back, .player { bottom: calc(-1 * var(--vfix, 0px)); }
+/* дата и время не залезает на поле «Минут» */
+.field { min-width: 0; }
+.field input[type="datetime-local"] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left; }
+.field input[type="datetime-local"]::-webkit-date-and-time-value { text-align: left; }
+.grid2.dt { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }

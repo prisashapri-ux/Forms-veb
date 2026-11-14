@@ -976,7 +976,7 @@ function viewWorkout(id) {
         : !w.finishedAt && w.startedAt ? `<section class="card w-clock-card"><span class="w-clock-ic">${icon.clock}</span><span class="grow"><span class="small muted">Идёт тренировка${w.exercises.length ? ` · план ${estText(estWorkout(w))}` : ''}</span><b id="w-clock" class="num">${clockText(w)}</b></span><button class="btn small" data-act="finish">${icon.check} Завершить</button></section>${lockCard(w)}` : ''}
       <section class="card stack">
         <div class="field"><label for="w-title">Название</label><input id="w-title" data-win="title" value="${esc(w.title)}"></div>
-        <div class="grid2"><div class="field"><label for="w-date">Дата и время</label><input id="w-date" type="datetime-local" data-win="date" value="${dateVal}"></div>
+        <div class="grid2 dt"><div class="field"><label for="w-date">Дата и время</label><input id="w-date" type="datetime-local" data-win="date" value="${dateVal}"></div>
         <div class="field"><label for="w-dur">Минут</label><input id="w-dur" inputmode="numeric" data-win="durationMinutes" value="${w.durationMinutes ?? ''}" placeholder="—"></div></div>
         <div class="stat-line" id="w-stats">${workoutStats(w).map((s) => `<span>${s}</span>`).join('')}</div>
       </section>
@@ -1835,18 +1835,36 @@ async function aiPhotoFrom(file) {
 // Чат ИИ живёт в неподвижной рамке ровно по видимой области экрана: на iPhone
 // клавиатура и прокрутка окна иначе сдвигают поле ввода и вкладки на середину.
 const feedToEnd = () => { const m = $('#view'); if (m) m.scrollTop = m.scrollHeight; };
+// На iPhone (особенно в приложении с экрана «Домой») после закрытия клавиатуры
+// высота окна иногда «застревает» укороченной: вкладки, таймер и окна оказываются
+// на середине экрана. Помним полную высоту окна без клавиатуры и сдвигаем их обратно.
+const fullH = {};
+const isEditing = () => !!document.activeElement?.matches?.('input:not([type=button]):not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select, [contenteditable="true"]');
 function fitViewport() {
   const vv = window.visualViewport;
-  const h = vv ? vv.height : innerHeight;
+  const editing = isEditing();
+  const key = matchMedia('(orientation: portrait)').matches ? 'p' : 'l';
+  if (!editing) fullH[key] = Math.max(fullH[key] || 0, innerHeight, vv ? Math.round(vv.height) : 0);
+  const full = fullH[key] || innerHeight;
+  const h = editing ? (vv ? vv.height : innerHeight) : full;
+  const off = vv ? vv.offsetTop : 0;
   const root = document.documentElement.style;
   root.setProperty('--vvh', `${Math.round(h)}px`);
-  root.setProperty('--vvt', `${Math.round(vv ? vv.offsetTop : 0)}px`);
-  document.body.classList.toggle('kb', innerHeight - h > 120);
+  root.setProperty('--vvt', `${Math.round(editing ? off : 0)}px`);
+  // сдвиг закреплённых снизу элементов: ноль, пока всё в порядке
+  // панель Safari сворачивается на ~100 px — это не поломка; клавиатура выше 250 px
+  const lost = full - innerHeight > 180 ? full - innerHeight : 0;
+  const shift = editing ? 0 : Math.min(700, lost + (off > 30 ? off : 0));
+  root.setProperty('--vfix', `${Math.round(shift)}px`);
+  document.body.classList.toggle('kb', editing && full - h > 120);
   if (document.body.classList.contains('chat-mode') && scrollY) scrollTo(0, 0);
 }
 if (window.visualViewport) { visualViewport.addEventListener('resize', fitViewport); visualViewport.addEventListener('scroll', fitViewport); }
 addEventListener('resize', fitViewport);
-addEventListener('focusout', () => setTimeout(fitViewport, 60));
+addEventListener('focusout', () => { setTimeout(fitViewport, 60); setTimeout(() => { if (!isEditing()) { scrollTo(scrollX, scrollY); fitViewport(); } }, 400); });
+addEventListener('orientationchange', () => setTimeout(fitViewport, 400));
+addEventListener('pageshow', fitViewport);
+fitViewport();
 addEventListener('focusin', (e) => { if (e.target.id === 'ai-input') setTimeout(() => { fitViewport(); feedToEnd(); }, 300); });
 
 function autoGrow() {
