@@ -371,3 +371,23 @@ test('Дома: нагрузка растёт по уровням, повтор�
   const names = new Set(L.DEFAULT_EXERCISES.map(([n]) => n)); const tips = { ...CATALOG, ...H.HOME_CATALOG, ...PULLUP_CATALOG };
   for (const h of H.HOME) for (const [ex] of h.items) { assert.ok(names.has(ex), `нет в списке: ${ex}`); assert.ok(tips[ex], `нет подсказок: ${ex}`); }
 });
+
+test('Штанга: вес грифа учитывается в подсказке и тексте для ИИ', () => {
+  const rack = L.cleanMachine({ id: 'r1', name: 'Силовая стойка', exercise: 'Приседания со штангой', group: 'legs', bar: '15', barMode: 'plates' });
+  assert.equal(rack.bar, 15); assert.equal(rack.barMode, 'plates');
+  assert.ok(!('bar' in L.cleanMachine({ name: 'Жим ногами', bar: '' })));
+  assert.deepEqual(L.barInfo('Жим штанги лёжа', null), { kg: 20, mode: 'total', from: '' });
+  assert.equal(L.barInfo('Жим ногами', null), null);
+  assert.equal(L.platesPerSide(60, L.barInfo('Жим штанги лёжа', null)), 20);
+  assert.equal(L.platesPerSide(40, L.barInfo('Приседания со штангой', rack)), 20);
+  assert.equal(L.platesPerSide(10, L.barInfo('Жим штанги лёжа', null)), null);
+  const t = L.barText([rack, L.cleanMachine({ name: 'Жим ногами', exercise: 'Жим ногами' })], ['Жим штанги лёжа']);
+  assert.match(t, /Силовая стойка.*гриф 15 кг.*только вес блинов/);
+  assert.doesNotMatch(t, /Жим ногами:/);
+  assert.match(t, /гриф 20 кг/);
+});
+
+test('Штанга: стойка для подъёма ног не считается штангой', () => {
+  assert.ok(!L.isBarMachine({ name: 'Стойка для подъёма ног', exercise: 'Подъём ног в упоре' }));
+  assert.ok(L.isBarMachine({ name: 'Силовая стойка', exercise: 'Приседания' }));
+});

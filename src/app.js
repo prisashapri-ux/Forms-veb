@@ -561,6 +561,14 @@ function newWorkout(fromProgram = null, dayIndex = 0, day = null) {
   go(`w-${w.id}`);
 }
 
+/** Строка про гриф под упражнением со штангой: вес грифа и блины на сторону. */
+function barLine(e) {
+  const b = L.barInfo(e.name, machineFor(e.name));
+  if (!b) return '';
+  const w = e.sets.find((x) => !x.isWarmup && x.weight > 0)?.weight;
+  const side = L.platesPerSide(w, b);
+  return `<div class="ex-meta">Гриф ${num(b.kg, 1)} кг${b.mode === 'plates' ? ', в дневнике только блины' : ''}${side != null ? ` · ${num(w, 2)} кг: по ${num(side, 2)} кг на сторону` : ''}</div>`;
+}
 /** Отрезок дома: секунды и, если записали, повторы. */
 const homeSetText = (s) => (s.count ? `${s.count} повт. за ${s.reps} с` : `${s.reps} с`);
 /** Подход строкой: у кардио минуты, километры и уровень, у остальных вес×повторы. */
@@ -758,6 +766,10 @@ function machineSheet(m, { isNew = false, found = false, tip = '' } = {}) {
       ${MACHINE_VIDEO[m.id] ? videoTag(MACHINE_VIDEO[m.id], m.name) : m.photo ? `<img class="gym-photo" src="${m.photo}" alt="Фото тренажёра">` : ''}
       ${m.about || m.brand || m.ddx ? `<p class="small" style="margin:0">${m.brand ? `<b>${esc(m.brand)}</b>${m.ddx ? ` · №${esc(m.ddx)} в DDX` : ''}<br>` : m.ddx ? `<b>№${esc(m.ddx)} в DDX</b><br>` : ''}${esc(m.about || '')}</p>` : ''}
       <div class="m-tip">${icon.spark}<span><b>Как настроить.</b> ${esc(tip || L.setupHint(m).tip)}</span></div>
+      ${L.isBarMachine(m) ? `<div class="section-caption" style="margin:4px 0 -4px">Гриф</div>
+      <div class="card m-bar"><label><span>Вес грифа, кг</span><input id="m-bar" inputmode="decimal" maxlength="5" placeholder="${L.BAR_DEFAULT}" value="${m.bar ? num(m.bar, 1).replace(/\s/g, '') : ''}"></label>
+        <label><span>В дневник пишу</span><select id="m-barmode"><option value="total">вес с грифом</option><option value="plates" ${m.barMode === 'plates' ? 'selected' : ''}>только блины</option></select></label></div>
+      <p class="small muted" style="margin:-4px 0 0">ИИ учтёт гриф, когда советует вес, а в тренировке покажется, сколько блинов вешать на сторону.</p>` : ''}
       <div class="section-caption" style="margin:4px 0 -4px">Мои уровни</div>
       <div class="m-adjust">${(() => { const f = L.setupHint(m).fields; const a = m.adjust || {}; return L.ADJUST.filter(([k]) => !f.length || f.includes(k) || a[k]).map(([k, t]) => `<label><span>${t}</span><input data-adj="${k}" inputmode="text" maxlength="12" placeholder="—" value="${esc(a[k] || '')}"></label>`).join(''); })()}</div>
       ${m.exercises?.length ? `<div class="section-caption" style="margin:4px 0 -4px">Упражнения</div><div class="card list m-exs">${m.exercises.map((x, i) => `<div class="item">${thumb(x.name, { animate: !!EX_VIDEO[x.name] })}<span class="grow"><span class="title">${esc(x.name)}</span><div class="sub">${esc(x.muscle || L.GROUPS[x.group])}${(() => { const r = lastResult(x.name); return r ? ` · ${esc(r)}` : ''; })()}</div></span><button class="icon-btn" data-m-ex="${i}" aria-label="Добавить в тренировку: ${esc(x.name)}">${icon.plus}</button></div>`).join('')}</div>` : ''}
@@ -796,7 +808,7 @@ function saveMachine(el, m, isNew) {
   if (!name) { toast('Напиши название'); el.querySelector('#m-name').focus(); return null; }
   const exName = el.querySelector('#m-ex').value.trim() || name;
   const group = el.querySelector('#m-group').value;
-  const clean = L.cleanMachine({ ...m, id: isNew ? L.uid() : m.id, name, exercise: exName, group, settings: el.querySelector('#m-set').value, adjust: { ...(m.adjust || {}), ...Object.fromEntries([...el.querySelectorAll('[data-adj]')].map((i) => [i.dataset.adj, i.value])) }, created: m.created || Date.now() });
+  const clean = L.cleanMachine({ ...m, id: isNew ? L.uid() : m.id, name, exercise: exName, group, settings: el.querySelector('#m-set').value, ...(el.querySelector('#m-bar') ? { bar: el.querySelector('#m-bar').value.replace(',', '.'), barMode: el.querySelector('#m-barmode').value } : {}), adjust: { ...(m.adjust || {}), ...Object.fromEntries([...el.querySelectorAll('[data-adj]')].map((i) => [i.dataset.adj, i.value])) }, created: m.created || Date.now() });
   const finalEx = aiEnsureExercise({ name: clean.exercise, group: clean.group });
   clean.exercise = finalEx;
   if (isNew) machines().push(clean); else { const i = machines().findIndex((x) => x.id === m.id); if (i >= 0) machines()[i] = clean; else machines().push(clean); }
@@ -944,7 +956,7 @@ function viewWorkout(id) {
       <div class="ex-head"><button class="thumb-btn" data-act="exercise-info" data-name="${esc(e.name)}" aria-label="Техника: ${esc(e.name)}">${thumb(e.name, { animate: true, size: 'lg' })}</button>
         <button class="name" data-act="exercise-info" data-name="${esc(e.name)}">${esc(e.name)}<small>${L.GROUPS[g]}${range ? ` · цель ${range[0]}–${range[1]} повт.` : ''}${note ? ` · ${esc(note)}` : ''}</small></button>
         <button class="icon-btn" data-act="ex-menu" data-e="${ei}" aria-label="Действия с упражнением">${icon.more}</button></div>
-      <div class="ex-meta">${esc(prevText)}</div>${timed && e.sets.some((x) => x.count) ? `<div class="ex-meta">Сегодня: ${e.sets.map((x) => x.count || '—').join(', ')} повт.</div>` : ''}
+      <div class="ex-meta">${esc(prevText)}</div>${barLine(e)}${timed && e.sets.some((x) => x.count) ? `<div class="ex-meta">Сегодня: ${e.sets.map((x) => x.count || '—').join(', ')} повт.</div>` : ''}
       ${(() => { const mm = machineFor(e.name); if (!mm) return ''; const st = L.machineSettingsText(mm); return `<button class="my-machine" data-act="gym-open" data-id="${mm.id}">${mm.photo ? `<img src="${mm.photo}" alt="">` : icon.camera}<span class="grow"><b>${esc(mm.name)}</b>${st ? `<span class="m-levels">${esc(st)}</span>` : `<span class="m-hint">${esc(L.setupHint(mm).tip)} <u>Запиши свои уровни</u></span>`}</span>${icon.chev}</button>`; })()}
       ${sug ? `<div class="hint"><div class="grow">Сегодня: <b>${esc(sug.headline)}</b><br><span class="muted small">${esc(sug.reason)}</span></div><button class="btn small secondary" data-act="apply-sug" data-e="${ei}">Подставить</button></div>` : ''}
       <div class="sets ${isCardio ? 'cardio' : ''}"><div class="set-row head"><span>№</span><span>${isCardio ? 'мин' : 'кг'}</span><span>${isCardio ? 'км' : timed ? 'сек' : 'повт'}</span>${isCardio ? '<span>уровень</span>' : ''}<span></span><span></span></div>${rows}</div>
@@ -1653,7 +1665,8 @@ const aiPlannedNow = () => AI.plannedText(state.workouts.filter((w) => w.planned
 function aiSummaryNow() {
   const ws = doneWs().filter((w) => w.exercises.length);
   const prof = [...state.measurements].reverse().find((m) => m.age || m.heightCm) || {};
-  return AI.aiSummary(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), currentTips(), { age: prof.age, heightCm: prof.heightCm });
+  const bar = L.barText(machines(), ws.flatMap((w) => w.exercises.map((e) => e.name)));
+  return AI.aiSummary(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), currentTips(), { age: prof.age, heightCm: prof.heightCm }) + (bar ? `\n\n${bar}` : '');
 }
 
 // ───────── ИИ-помощник: отдельный раздел с чатом ─────────

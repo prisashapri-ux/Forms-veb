@@ -506,6 +506,8 @@ export function cleanMachine(m) {
     exercise: String(m.exercise || name).replace(/\s+/g, ' ').trim().slice(0, 60) || name,
     group: GROUPS[m.group] ? m.group : 'other', settings: String(m.settings || '').trim().slice(0, 300),
     ...(cleanAdjust(m.adjust) ? { adjust: cleanAdjust(m.adjust) } : {}),
+    ...(Number.isFinite(+m.bar) && +m.bar > 0 && +m.bar <= 60 && m.bar !== '' ? { bar: Math.round(+m.bar * 10) / 10 } : {}),
+    ...(m.barMode === 'plates' ? { barMode: 'plates' } : {}),
     photo, created: Number.isFinite(m.created) ? m.created : Date.now(),
     ...(m.about ? { about: String(m.about).trim().slice(0, 400) } : {}),
     ...(m.brand ? { brand: String(m.brand).trim().slice(0, 40) } : {}),
@@ -587,7 +589,7 @@ export function mergeMachines(current, json) {
   if (!list) throw new Error('В файле нет тренажёров.');
   // Дубли, убранные из базы зала: удаляем, если человек не записал в них свои настройки.
   const removedIds = new Set(Array.isArray(f?.removed) ? f.removed.filter((x) => typeof x === 'string') : []);
-  const own = (m) => (m.adjust && Object.values(m.adjust).some(Boolean)) || (m.settings && String(m.settings).trim());
+  const own = (m) => (m.adjust && Object.values(m.adjust).some(Boolean)) || (m.settings && String(m.settings).trim()) || m.bar > 0;
   const out = current.filter((m) => !removedIds.has(m.id) || own(m)).map((m) => ({ ...m }));
   const removed = current.length - out.length;
   let added = 0, updated = 0;
@@ -731,3 +733,40 @@ export function personalPace(workouts) {
   const med = r[Math.floor(r.length / 2)];
   return Math.min(6, Math.max(1.5, med));
 }
+
+// ───────── Штанга и гриф ─────────
+export const BAR_DEFAULT = 20;
+const BAR_RE = /штанг|гриф|смит/i;
+/** Упражнение со штангой (по названию). */
+export const isBarbell = (name) => BAR_RE.test(String(name || ''));
+/** Тренажёр со штангой: стойка, скамья под штангу, Смит, Т-гриф. */
+export const isBarMachine = (m) => !!m && (m.bar > 0 || BAR_RE.test([m.name, m.exercise, ...(m.exercises || []).map((x) => x.name)].join(' ')) || /силов\S* стойк|скамья для жима|силовая рама/i.test(m.name || ''));
+/** Гриф для упражнения: из тренажёра, если задан, иначе стандартный 20 кг. */
+export function barInfo(name, machine) {
+  if (machine && machine.bar > 0) return { kg: machine.bar, mode: machine.barMode === 'plates' ? 'plates' : 'total', from: machine.name };
+  if (!isBarbell(name) && !(machine && isBarMachine(machine))) return null;
+  return { kg: BAR_DEFAULT, mode: machine?.barMode === 'plates' ? 'plates' : 'total', from: machine?.name || '' };
+}
+/** Сколько блинов на каждую сторону для веса из дневника. */
+export function platesPerSide(weight, bar) {
+  if (!bar || !(weight > 0)) return null;
+  const plates = bar.mode === 'plates' ? weight : weight - bar.kg;
+  if (plates < 0) return null;
+  return Math.round((plates / 2) * 100) / 100;
+}
+/** Текст для ИИ: какой гриф и как записан вес. */
+export function barText(machines, exerciseNames) {
+  const lines = [];
+  for (const m of machines) {
+    if (!isBarMachine(m)) continue;
+    const b = barInfo(m.exercise, m);
+    const exs = [...new Set([m.exercise, ...(m.exercises || []).map((x) => x.name)])].filter(Boolean).join(', ');
+    lines.push(`- ${m.name}${exs ? ` (${exs})` : ''}: гриф ${num1(b.kg)} кг${m.bar > 0 ? '' : ' (не задан, считаю стандартный)'}, в дневнике ${b.mode === 'plates' ? 'только вес блинов, без грифа' : 'общий вес вместе с грифом'}.`);
+  }
+  const free = [...new Set(exerciseNames)].filter((n) => isBarbell(n));
+  if (!lines.length && !free.length) return '';
+  return ['Штанга и гриф:', ...lines,
+    `- Остальные упражнения со штангой: гриф ${BAR_DEFAULT} кг, в дневнике общий вес вместе с грифом.`,
+    'Советуя вес штанги, учитывай гриф: общий вес не меньше веса грифа, шаг прибавки 2,5 кг (по 1,25 кг на сторону), называй вес в том же виде, как он записан в дневнике, и подскажи, сколько блинов повесить на каждую сторону.'].join('\n');
+}
+const num1 = (v) => String(Math.round(v * 10) / 10).replace('.', ',');

@@ -749,3 +749,7 @@ body.touring { overflow: hidden; }
 body.touring .toast { display: none; }
 .tour-page .tour-badge + h1 { margin: 10px 0 24px; }
 @media (max-width: 360px) { .tour-page h1 { font-size: 28px; line-height: 34px; } }
+/* Тренажёр со штангой: вес грифа */
+.m-bar { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; padding: 8px; }
+.m-bar label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.m-bar input, .m-bar select { width: 100%; border: 0; background: var(--fill); border-radius: 8px; font: 600 17px var(--font); padding: 8px; color: var(--fg); }
