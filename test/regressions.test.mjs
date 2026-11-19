@@ -41,3 +41,21 @@ test('копия сохраняет пользовательские настр�
     assert.equal(L.readBackup({ version: 2, measurements: [], workouts: [] }, s.settings).settings.restSeconds, 90);
   } finally { if (oldTZ === undefined) delete process.env.TZ; else process.env.TZ = oldTZ; }
 });
+
+test('копия переносит историю ИИ, миниатюры и связи с тренировками, но не ключ API', () => {
+  const s = L.emptyState();
+  s.workouts.push({ id: 'workout123', date: '2026-11-19T09:00:00Z', title: 'Тест', exercises: [] });
+  s.aiChats = [{ id: 'chat123', title: 'Вопрос', created: 100, updated: 200, msgs: [
+    { role: 'user', text: 'Тест', thumb: 'data:image/jpeg;base64,YQ==', image: 'data:image/jpeg;base64,Yg==' },
+    { role: 'assistant', text: 'Ответ', model: 'think', planned: {0:'workout123'} },
+  ] }];
+  s.settings.apiKey = 'test-secret';
+  const b = L.makeBackup(s);
+  assert.equal(b.aiChats[0].msgs[0].image, undefined);
+  assert.equal(b.aiChats[0].msgs[0].thumb, s.aiChats[0].msgs[0].thumb);
+  assert.ok(!JSON.stringify(b).includes('test-secret'));
+  const back = L.readBackup(JSON.stringify(b));
+  assert.equal(back.aiChats[0].msgs[1].text, 'Ответ');
+  assert.equal(back.aiChats[0].msgs[1].planned[0], back.workouts[0].id);
+  assert.equal(L.readBackup({ version:2, measurements:[], workouts:[] }, {}, s.aiChats).aiChats.length, 1);
+});

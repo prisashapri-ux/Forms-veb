@@ -247,6 +247,8 @@ export function loadChats() {
     return Array.isArray(v) ? v.filter((c) => c && typeof c.id === 'string' && Array.isArray(c.msgs)) : [];
   } catch { return []; }
 }
+// Удаляем прежнюю копию только после подтверждённой записи в общее хранилище.
+export function clearLegacyChats() { ls.set(CHATS, ''); }
 /** Полноразмерные фото в историю не пишутся, только миниатюры: localStorage маленький. */
 export function saveChats(chats) {
   const trimmed = [...chats].sort((a, b) => b.updated - a.updated).slice(0, 40)
@@ -363,3 +365,4 @@ export async function identifyMachine(image, machines = [], exerciseNames = [], 
   }
   return parseMachine(json?.choices?.[0]?.message?.content || '', machines.filter((x) => x.photo).slice(0, 20).length);
 }
+

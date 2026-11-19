@@ -440,6 +440,7 @@ export function emptyState() {
     food: [],
     templates: [],
     machines: [],
+    aiChats: [],
     settings: { activeProgram: null, nutritionGoal: null, restSeconds: 120 },
   };
 }
@@ -447,11 +448,32 @@ export function emptyState() {
 // Swift .iso8601 не понимает доли секунды.
 const iso = (d) => toDate(d).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
+const validId = (v) => typeof v === 'string' && /^[\w-]{1,100}$/.test(v);
+// Только сохраняемая история: без полноразмерных фото и без ключа API.
+export function cleanChats(chats) {
+  if (!Array.isArray(chats)) return [];
+  const seen = new Set();
+  const refs = (value) => Object.fromEntries(Object.entries(value && typeof value === 'object' ? value : {}).filter(([k, v]) => k !== '__proto__' && k !== 'constructor' && validId(v)));
+  return chats.filter(c => c && validId(c.id) && Array.isArray(c.msgs) && !seen.has(c.id) && seen.add(c.id)).map(c => ({
+    id: c.id, title: typeof c.title === 'string' ? c.title : 'Разговор',
+    created: Number.isFinite(c.created) ? c.created : 0, updated: Number.isFinite(c.updated) ? c.updated : 0,
+    msgs: c.msgs.filter(m => m && ['user', 'assistant'].includes(m.role) && typeof m.text === 'string').map(m => ({
+      role: m.role, text: m.text,
+      ...(typeof m.thumb === 'string' && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(m.thumb) ? { thumb: m.thumb } : {}),
+      ...(m.hadPhoto || m.image || m.thumb ? { hadPhoto: true } : {}),
+      ...(typeof m.model === 'string' ? { model: m.model } : {}), ...(m.error === true ? { error: true } : {}),
+      ...(m.added ? { added: refs(m.added) } : {}), ...(m.planned ? { planned: refs(m.planned) } : {}),
+      ...(m.applied && typeof m.applied === 'object' ? { applied: Object.fromEntries(Object.entries(m.applied).filter(([k,v]) => /^\d+$/.test(k) && v === true)) } : {}),
+    })),
+  }));
+}
+
 export function makeBackup(state) {
   return {
     version: 2,
     createdAt: iso(new Date()),
     settings: backupSettings(state.settings),
+    aiChats: cleanChats(state.aiChats),
     measurements: [...state.measurements].sort((a, b) => a.day.localeCompare(b.day)).map((m) => {
       const ranges = {}, segmentMuscle = {}, segmentFat = {};
       for (const [k, r] of Object.entries(m.ranges || {})) ranges[k] = { min: r.min, max: r.max };
@@ -466,7 +488,7 @@ export function makeBackup(state) {
     }),
     exercises: [...state.exercises].sort((a, b) => a.name.localeCompare(b.name, 'ru')).map((e) => clean({ name: e.name, group: e.group, isCustom: !!e.isCustom, note: e.note || undefined })),
     workouts: [...state.workouts].sort((a, b) => (a.date < b.date ? -1 : 1)).map((w) => clean({
-      date: iso(w.date), title: w.title, note: w.note || '', durationMinutes: w.durationMinutes ?? undefined,
+      id: validId(w.id) ? w.id : undefined, date: iso(w.date), title: w.title, note: w.note || '', durationMinutes: w.durationMinutes ?? undefined,
       programID: w.programID ?? undefined, programDay: w.programDay ?? undefined, finishedAt: w.finishedAt && !Number.isNaN(+toDate(w.finishedAt)) ? iso(w.finishedAt) : undefined,
       planned: w.planned ? true : undefined,
       exercises: w.exercises.map((e, i) => ({ order: i, exerciseName: e.name, group: groupOfIn(state, e.name),
@@ -628,13 +650,15 @@ function backupSettings(s = {}) {
   return out;
 }
 
-export function readBackup(json, existingSettings = {}) {
+export function readBackup(json, existingSettings = {}, existingChats = []) {
   let f;
   try { f = typeof json === 'string' ? JSON.parse(json) : json; } catch { throw new Error('Файл не читается: это не JSON.'); }
   if (!f || typeof f !== 'object' || !Array.isArray(f.measurements) || !Array.isArray(f.workouts)) throw new Error('Это не резервная копия «Формы».');
   if (typeof f.version === 'number' && f.version > 2) throw new Error('Копия сделана более новой версией «Формы». Обнови приложение.');
   const state = emptyState();
   state.settings = { ...state.settings, ...existingSettings, ...backupSettings(f.settings || {}) };
+  if (f.aiChats !== undefined && !Array.isArray(f.aiChats)) throw new Error('История ИИ в копии повреждена.');
+  state.aiChats = cleanChats(f.aiChats ?? existingChats);
   for (const m of f.measurements) {
     const d = new Date(m.day);
     if (Number.isNaN(+d)) continue;
@@ -667,7 +691,7 @@ export function readBackup(json, existingSettings = {}) {
         weight: finite(s.weight, 0, 1000) ? s.weight : 0, reps: Number.isInteger(s.reps) && s.reps >= 0 && s.reps <= 1000 ? s.reps : 0,
         ...(finite(s.level, 1, 100) ? { level: Math.round(s.level * 10) / 10 } : {}), isWarmup: !!s.isWarmup, isDone: !w.planned && s.isDone !== false })) };
     });
-    state.workouts.push({ id: uid(), date: d.toISOString(), title: String(w.title || 'Тренировка'), note: String(w.note || ''),
+    state.workouts.push({ id: validId(w.id) && !state.workouts.some(x => x.id === w.id) ? w.id : uid(), date: d.toISOString(), title: String(w.title || 'Тренировка'), note: String(w.note || ''),
       durationMinutes: finite(w.durationMinutes, 0, 1440) ? w.durationMinutes : null, programID: w.programID ?? null,
       programDay: Number.isInteger(w.programDay) ? w.programDay : null, finishedAt: w.finishedAt && !Number.isNaN(+new Date(w.finishedAt)) ? new Date(w.finishedAt).toISOString() : null, exercises, ...(w.planned === true ? { planned: true } : {}) });
   }
