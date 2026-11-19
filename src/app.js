@@ -443,7 +443,7 @@ function previewReport(report) {
       });
     },
     onRight: () => {
-      if (state.demo) { state = L.emptyState(); }
+      if (state.demo) { state = { ...L.emptyState(), aiChats: state.aiChats }; }
       const { list, added } = L.mergeMeasurements(state.measurements, L.measurementsFromReport(report, { ...cond }));
       state.measurements = list;
       save(); closeSheet(); ui.bodyMetric = 'weight';
@@ -1678,7 +1678,15 @@ const AI_SUGGEST = [
   ['Тренировка на сегодня', 'Предложи тренировку на сегодня с учётом того, что я делал на этой неделе.'],
 ];
 const aiState = { chats: null, id: null, busy: false, draft: '', photo: null };
-const aiChats = () => (aiState.chats ||= AI.loadChats());
+const aiChats = () => (aiState.chats ||= L.cleanChats(state.aiChats));
+function saveAIChats() {
+  state.aiChats = L.cleanChats(aiChats());
+  save();
+  flush().then(ok => { if (ok) AI.clearLegacyChats(); });
+}
+function resetAIFromState() {
+  aiState.chats = null; aiState.id = null; aiState.draft = ''; aiState.photo = null;
+}
 const aiCurrent = () => aiChats().find((c) => c.id === aiState.id) || null;
 
 function viewAI() {
@@ -1689,7 +1697,7 @@ function viewAI() {
   const left = `<span data-nav class="nav-left">${inChat ? `<button class="back-btn" data-act="ai-new" aria-label="Назад к началу">${icon.back}<span>Назад</span></button>` : `<button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button>`}</span>`;
   const right = `<span class="nav-right">${inChat ? `<button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button>` : hasKey ? `<button class="icon-btn plain" data-act="ai-key" aria-label="Заменить ключ">${icon.key}</button>` : ''}<button class="icon-btn plain" data-act="ai-new" aria-label="Новый чат">${icon.compose}</button></span>`;
   let body;
-  if (!hasKey) {
+  if (!hasKey && !inChat) {
     body = `<div class="ai-hello"><span class="ai-logo">${icon.spark}</span><h2>ИИ-советник</h2><p>Спрашивай своими словами про тренировки, питание и замеры. Ответ учитывает твои рабочие веса, подходы и InBody.</p></div>
       <section class="card stack ai-connect"><b>Подключи DeepSeek</b>
         <p class="small muted" style="margin:0">Создай ключ на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> и пополни баланс: вопрос стоит меньше рубля. Ключ хранится только в этом браузере.</p>
@@ -1895,8 +1903,8 @@ function aiHistory() {
     onOpen: (el) => el.addEventListener('click', (e) => {
       const o = e.target.closest('[data-open]'), d = e.target.closest('[data-del]');
       if (o) { aiState.id = o.dataset.open; closeSheet(); go('ai'); render(); }
-      else if (d) { aiState.chats = aiChats().filter((c) => c.id !== d.dataset.del); if (aiState.id === d.dataset.del) aiState.id = null; AI.saveChats(aiState.chats); closeSheet(); aiHistory(); render(); }
-      else if (e.target.closest('[data-clear-all]')) { aiState.chats = []; aiState.id = null; AI.saveChats([]); closeSheet(); render(); }
+      else if (d) { aiState.chats = aiChats().filter((c) => c.id !== d.dataset.del); if (aiState.id === d.dataset.del) aiState.id = null; saveAIChats(); closeSheet(); aiHistory(); render(); }
+      else if (e.target.closest('[data-clear-all]')) { aiState.chats = []; aiState.id = null; saveAIChats(); closeSheet(); render(); }
     }),
   });
 }
@@ -1916,7 +1924,7 @@ async function aiSend(text) {
 
 async function aiRun(chat) {
   aiState.busy = true;
-  AI.saveChats(aiChats());
+  saveAIChats();
   if (route().name === 'ai') render();
   const model = AI.getMode();
   try {
@@ -1928,7 +1936,7 @@ async function aiRun(chat) {
   }
   chat.updated = Date.now();
   aiState.busy = false;
-  AI.saveChats(aiChats());
+  saveAIChats();
   if (route().name === 'ai') render();
 }
 
@@ -1959,7 +1967,7 @@ function aiAct(act, el) {
     const name = aiEnsureExercise(r.x);
     const w = addToWorkout(name, Array.from({ length: r.x.sets }, () => ({ weight: r.x.weight, reps: r.x.reps[0], isWarmup: false, isDone: false })));
     r.m.added = { ...r.m.added, [r.x.name]: w.id };
-    save(); AI.saveChats(aiChats()); render();
+    saveAIChats(); render();
     if (!wasDemo) toast('Добавлено в тренировку');
   }
   else if (act === 'ai-plan' || act === 'ai-plan-all') {
@@ -1978,7 +1986,7 @@ function aiAct(act, el) {
       m.planned = { ...m.planned, [j]: w.id };
       days.push(dayLabel(k));
     }
-    save(); AI.saveChats(aiChats()); render();
+    saveAIChats(); render();
     if (days.length) toast(days.length === 1 ? `Сохранено в календарь: ${days[0]}` : `Сохранено в календарь: ${days.length} тренировки`);
     if (edits) toast(edits === 1 ? 'Календарь обновлён' : `Календарь обновлён: ${edits} изменения`);
   }
@@ -2280,12 +2288,13 @@ async function exportBackup() {
 function importBackup(file) {
   file.text().then((text) => {
     let next;
-    try { next = L.readBackup(text, state.settings); } catch (e) { toast(e.message); return; }
-    confirmSheet('Восстановить копию?', `В копии ${next.measurements.length} замеров, ${next.workouts.length} тренировок и ${next.food.length} записей еды. Текущие данные в браузере заменятся.`, 'Заменить данные', () => {
+    try { next = L.readBackup(text, state.settings, state.aiChats); } catch (e) { toast(e.message); return; }
+    confirmSheet('Восстановить копию?', `В копии ${next.measurements.length} замеров, ${next.workouts.length} тренировок и ${next.food.length} записей еды. После восстановления: ${next.aiChats.length} разговоров ИИ. Текущие данные в браузере заменятся.`, 'Заменить данные', () => {
+      if (aiState.busy) { toast('Дождись ответа ИИ и повтори восстановление'); return; }
       replaceStateWithSnapshot(state, next).then((ok) => {
         if (!ok) { toast('Не удалось безопасно восстановить копию. Текущие данные не заменены.'); return; }
         snapAt = new Date().toISOString();
-        state = next; go('body'); render(true);
+        state = next; resetAIFromState(); go('body'); render(true);
         toast('Данные восстановлены. Вернуть как было можно в Настройках');
       });
     });
@@ -2294,7 +2303,7 @@ function importBackup(file) {
 
 function clearDemo(rerender = true) {
   const keep = { restSeconds: state.settings.restSeconds, activeProgram: rerender ? null : state.settings.activeProgram };
-  state = L.emptyState();
+  state = { ...L.emptyState(), aiChats: state.aiChats };
   state.settings = { ...state.settings, ...keep };
   save();
   if (rerender) render(); else toast('Примерные данные удалены, дальше всё твоё');
@@ -2319,16 +2328,18 @@ document.addEventListener('click', (ev) => {
       confirmSheet('Вернуть прежние данные?', 'Данные станут такими, какими были до восстановления из файла. То, что ты записал после восстановления, пропадёт.', 'Вернуть', () => {
         loadSnapshot().then(async (snap) => {
           if (!snap?.state) { toast('Прежних данных не нашлось'); snapAt = null; render(); return; }
-          if (!(await replaceStateWithSnapshot(state, snap.state))) { toast('Не удалось безопасно вернуть данные. Текущие данные не заменены.'); return; }
-          state = snap.state; snapAt = new Date().toISOString(); render(true); toast('Вернул прежние данные');
+          if (aiState.busy) { toast('Дождись ответа ИИ и повтори восстановление'); return; }
+          const previous = { ...snap.state, aiChats: snap.state.aiChats ?? state.aiChats };
+          if (!(await replaceStateWithSnapshot(state, previous))) { toast('Не удалось безопасно вернуть данные. Текущие данные не заменены.'); return; }
+          state = previous; resetAIFromState(); snapAt = new Date().toISOString(); render(true); toast('Вернул прежние данные');
         });
       });
       break;
     case 'load-demo':
       if (state.measurements.length || state.workouts.length) { toast('Примерные данные показываются только в пустом приложении'); break; }
-      state = demoState(); save(); render(true); break;
+      state = { ...demoState(), aiChats: state.aiChats }; save(); render(true); break;
     case 'clear-demo': clearDemo(); toast('Примерные данные удалены'); break;
-    case 'erase': confirmSheet('Стереть все данные?', 'Замеры, тренировки и питание удалятся из этого браузера. Отменить нельзя, поэтому сначала сохрани копию.', 'Стереть всё', async () => { await clearState(); state = L.emptyState(); save(); go('body'); render(true); }); break;
+    case 'erase': confirmSheet('Стереть все данные?', 'Замеры, тренировки и питание удалятся из этого браузера. История ИИ останется. Отменить нельзя, поэтому сначала сохрани копию.', 'Стереть всё', async () => { const chats = state.aiChats; await clearState(); state = { ...L.emptyState(), aiChats: chats }; save(); go('body'); render(true); }); break;
     case 'body-metric': ui.bodyMetric = el.dataset.m; render(); break;
     case 'seg-mode': ui.segMode = el.dataset.m; render(); break;
     case 'measurement': measurementSheet(el.dataset.day); break;
@@ -2500,6 +2511,11 @@ async function start() {
   try { saved = await loadState(); } catch { /* без сохранённых данных */ }
   if (saved && Array.isArray(saved.workouts)) {
     state = { ...L.emptyState(), ...saved, settings: { ...L.emptyState().settings, ...(saved.settings || {}) } };
+  }
+  // Однократный перенос старого отдельного localStorage; файл/ключ API не затрагиваем.
+  if (!Array.isArray(saved?.aiChats)) {
+    state.aiChats = L.cleanChats(AI.loadChats()); save();
+    if (await flush()) AI.clearLegacyChats();
   }
   // Новые упражнения из обновлений (например, для дома) добавляются в старый список.
   for (const [name, group] of L.DEFAULT_EXERCISES) if (!state.exercises.some((e) => e.name === name)) state.exercises.push({ name, group, isCustom: false, note: '' });
