@@ -114,7 +114,8 @@ export function uid() {
 
 // ───────── Тренировки ─────────
 
-export const workingSets = (entry) => entry.sets.filter((s) => !s.isWarmup && (s.reps > 0 || (s.level > 0 && s.weight > 0)));
+// Старые записи без флага isDone считаем выполненными, явное false — нет.
+export const workingSets = (entry) => entry.sets.filter((s) => s.isDone !== false && !s.isWarmup && (s.reps > 0 || (s.level > 0 && s.weight > 0)));
 export const e1rm = (s) => (s.reps <= 0 ? 0 : s.reps === 1 ? s.weight : s.weight * (1 + s.reps / 30));
 export const entryVolume = (entry) => workingSets(entry).reduce((a, s) => a + s.weight * s.reps, 0);
 // У кардио в «весе» минуты, а в «повторах» километры: в тоннаж они не идут.
@@ -128,7 +129,7 @@ export const bestE1rm = (entry) => Math.max(0, ...workingSets(entry).map(e1rm));
 export function previousEntry(workouts, name, before, exceptId) {
   let best = null;
   for (const w of workouts) {
-    if (w.id === exceptId || (before && w.date >= before)) continue;
+    if (w.planned || w.id === exceptId || (before && w.date >= before)) continue;
     const e = w.exercises.find((x) => x.name === name);
     if (!e || !workingSets(e).length) continue;
     if (!best || w.date > best.w.date) best = { w, e };
@@ -155,23 +156,22 @@ export function repRange(top) {
 
 export function suggest(previousSets, name, group, targetRange = null) {
   if (group === 'cardio') return null;
-  const warmups = previousSets.filter((s) => s.isWarmup && s.reps > 0);
-  const working = previousSets.filter((s) => !s.isWarmup && s.reps > 0);
+  const warmups = previousSets.filter((s) => s.isDone !== false && s.isWarmup && s.reps > 0);
+  const working = previousSets.filter((s) => s.isDone !== false && !s.isWarmup && s.reps > 0);
   if (!working.length) return null;
   const topWeight = Math.max(...working.map((s) => s.weight));
   const topReps = Math.max(...working.map((s) => s.reps));
   const [lo, hi] = targetRange || repRange(topReps);
-  const heavy = working.filter((s) => s.weight === topWeight);
   const inc = stepFor(name, group);
   const warm = warmups.map((s) => ({ weight: s.weight, reps: s.reps, isWarmup: true }));
   let plan, reason;
   if (topWeight <= 0) {
     plan = working.map((s) => ({ weight: 0, reps: s.reps + 1, isWarmup: false }));
     reason = 'Попробуй на повтор больше в каждом подходе.';
-  } else if (heavy.every((s) => s.reps >= hi)) {
-    plan = working.map(() => ({ weight: topWeight + inc, reps: lo, isWarmup: false }));
+  } else if (working.every((s) => s.reps >= hi)) {
+    plan = working.map((s) => ({ weight: s.weight + inc, reps: lo, isWarmup: false }));
     reason = `В прошлый раз все подходы по ${hi} повторов. Прибавь ${num(inc, 2)} кг и начни с ${lo} повторов.`;
-  } else if (heavy[0].reps < lo) {
+  } else if (working.some((s) => s.reps < lo)) {
     plan = working.map((s) => ({ weight: s.weight, reps: s.reps, isWarmup: false }));
     reason = 'В прошлый раз было тяжело. Повтори тот же результат, прежде чем прибавлять.';
   } else {
@@ -224,7 +224,7 @@ export const PROGRAMS = [
 export const programById = (id) => PROGRAMS.find((p) => p.id === id) || null;
 
 export function nextDay(program, workouts) {
-  const last = workouts.filter((w) => w.programID === program.id && w.programDay != null)
+  const last = workouts.filter((w) => !w.planned && w.programID === program.id && w.programDay != null)
     .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
   return last ? (last.programDay + 1) % program.days.length : 0;
 }
@@ -286,10 +286,10 @@ export function nutritionTargets(latest, weight, goalId) {
 const MAJOR = ['chest', 'back', 'legs', 'shoulders'];
 
 export function sessionsFrom(workouts, groupOf) {
-  return workouts.map((w) => ({
+  return workouts.filter((w) => !w.planned).map((w) => ({
     date: toDate(w.date),
     exercises: w.exercises.map((e) => ({ name: e.name, group: groupOf(e.name), sets: workingSets(e).map((s) => (s.level ? { weight: s.weight, reps: s.reps, level: s.level } : { weight: s.weight, reps: s.reps })) })),
-  })).sort((a, b) => a.date - b.date);
+  })).map((s) => ({ ...s, exercises: s.exercises.filter((e) => e.sets.length) })).filter((s) => s.exercises.length).sort((a, b) => a.date - b.date);
 }
 
 export function bodyPointsFrom(measurements) {
@@ -301,7 +301,7 @@ export function bodyPointsFrom(measurements) {
   })).sort((a, b) => a.date - b.date);
 }
 
-const sVolume = (s) => s.exercises.reduce((a, e) => a + e.sets.reduce((b, x) => b + x.weight * x.reps, 0), 0);
+const sVolume = (s) => s.exercises.reduce((a, e) => a + (e.group === 'cardio' ? 0 : e.sets.reduce((b, x) => b + x.weight * x.reps, 0)), 0);
 const days = (a, b) => (b - a) / DAY_MS;
 const recent = (sessions, n, now) => sessions.filter((s) => days(s.date, now) < n);
 const groupTitle = (g) => GROUPS[g].toLowerCase();
@@ -451,13 +451,14 @@ export function makeBackup(state) {
   return {
     version: 2,
     createdAt: iso(new Date()),
+    settings: backupSettings(state.settings),
     measurements: [...state.measurements].sort((a, b) => a.day.localeCompare(b.day)).map((m) => {
       const ranges = {}, segmentMuscle = {}, segmentFat = {};
       for (const [k, r] of Object.entries(m.ranges || {})) ranges[k] = { min: r.min, max: r.max };
       for (const [k, s] of Object.entries(m.segmentMuscle || {})) segmentMuscle[k] = clean(s);
       for (const [k, s] of Object.entries(m.segmentFat || {})) segmentFat[k] = clean(s);
       return clean({
-        day: iso(dayDate(m.day)), isPartial: !!m.isPartial, values: { ...m.values },
+        day: iso(dayDate(m.day)), localDay: m.day, isPartial: !!m.isPartial, values: { ...m.values },
         dailyCalories: m.dailyCalories, idealWeight: m.idealWeight, toIdealWeight: m.toIdealWeight, toIdealFat: m.toIdealFat,
         toIdealMuscle: m.toIdealMuscle, age: m.age, heightCm: m.heightCm,
         extras: { ranges, segmentMuscle, segmentFat }, conditions: m.conditions || undefined, source: m.source || undefined,
@@ -469,7 +470,7 @@ export function makeBackup(state) {
       programID: w.programID ?? undefined, programDay: w.programDay ?? undefined, finishedAt: w.finishedAt && !Number.isNaN(+toDate(w.finishedAt)) ? iso(w.finishedAt) : undefined,
       planned: w.planned ? true : undefined,
       exercises: w.exercises.map((e, i) => ({ order: i, exerciseName: e.name, group: groupOfIn(state, e.name),
-        sets: e.sets.map((s, j) => clean({ order: j, weight: s.weight, reps: s.reps, level: s.level || undefined, isWarmup: !!s.isWarmup, isDone: !!s.isDone })) })),
+        sets: e.sets.map((s, j) => clean({ order: j, weight: s.weight, reps: s.reps, level: s.level || undefined, isWarmup: !!s.isWarmup, isDone: !w.planned && s.isDone !== false })) })),
     })),
     food: [...state.food].sort((a, b) => (a.date < b.date ? -1 : 1)).map((f) => ({ date: iso(f.date), title: f.title, protein: f.protein, kcal: f.kcal })),
     // Свои тренировки из конструктора. iOS-приложение незнакомые поля пропускает.
@@ -618,19 +619,29 @@ export function groupOfIn(state, name) {
 const finite = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 
 /** Читает резервную копию iOS- или веб-версии. Бросает Error с понятным текстом. */
-export function readBackup(json) {
+function backupSettings(s = {}) {
+  const out = {};
+  if (s.activeProgram === null || typeof s.activeProgram === 'string') out.activeProgram = s.activeProgram;
+  if (s.nutritionGoal === null || Object.prototype.hasOwnProperty.call(GOALS, s.nutritionGoal)) out.nutritionGoal = s.nutritionGoal;
+  if (Number.isFinite(s.restSeconds) && s.restSeconds > 0 && s.restSeconds <= 3600) out.restSeconds = s.restSeconds;
+  if (typeof s.tourDone === 'boolean' || (typeof s.tourDone === 'string' && !Number.isNaN(+new Date(s.tourDone)))) out.tourDone = s.tourDone;
+  return out;
+}
+
+export function readBackup(json, existingSettings = {}) {
   let f;
   try { f = typeof json === 'string' ? JSON.parse(json) : json; } catch { throw new Error('Файл не читается: это не JSON.'); }
   if (!f || typeof f !== 'object' || !Array.isArray(f.measurements) || !Array.isArray(f.workouts)) throw new Error('Это не резервная копия «Формы».');
   if (typeof f.version === 'number' && f.version > 2) throw new Error('Копия сделана более новой версией «Формы». Обнови приложение.');
   const state = emptyState();
+  state.settings = { ...state.settings, ...existingSettings, ...backupSettings(f.settings || {}) };
   for (const m of f.measurements) {
     const d = new Date(m.day);
     if (Number.isNaN(+d)) continue;
     const values = {};
     for (const [k, v] of Object.entries(m.values || {})) if (METRIC_INFO[k] && finite(v, 0, 10000)) values[k] = v;
     state.measurements.push({
-      day: dayKey(d), isPartial: !!m.isPartial, values,
+      day: typeof m.localDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(m.localDay) && dayKey(dayDate(m.localDay)) === m.localDay ? m.localDay : dayKey(d), isPartial: !!m.isPartial, values,
       dailyCalories: m.dailyCalories ?? null, idealWeight: m.idealWeight ?? null, toIdealWeight: m.toIdealWeight ?? null,
       toIdealFat: m.toIdealFat ?? null, toIdealMuscle: m.toIdealMuscle ?? null, age: m.age ?? null, heightCm: m.heightCm ?? null,
       ranges: m.extras?.ranges || {}, segmentMuscle: m.extras?.segmentMuscle || {}, segmentFat: m.extras?.segmentFat || {},
@@ -654,7 +665,7 @@ export function readBackup(json) {
       }
       return { name: e.exerciseName, sets: [...(e.sets || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((s) => ({
         weight: finite(s.weight, 0, 1000) ? s.weight : 0, reps: Number.isInteger(s.reps) && s.reps >= 0 && s.reps <= 1000 ? s.reps : 0,
-        ...(finite(s.level, 1, 100) ? { level: Math.round(s.level * 10) / 10 } : {}), isWarmup: !!s.isWarmup, isDone: !!s.isDone })) };
+        ...(finite(s.level, 1, 100) ? { level: Math.round(s.level * 10) / 10 } : {}), isWarmup: !!s.isWarmup, isDone: !w.planned && s.isDone !== false })) };
     });
     state.workouts.push({ id: uid(), date: d.toISOString(), title: String(w.title || 'Тренировка'), note: String(w.note || ''),
       durationMinutes: finite(w.durationMinutes, 0, 1440) ? w.durationMinutes : null, programID: w.programID ?? null,
@@ -770,3 +781,4 @@ export function barText(machines, exerciseNames) {
     'Советуя вес штанги, учитывай гриф: общий вес не меньше веса грифа, шаг прибавки 2,5 кг (по 1,25 кг на сторону), называй вес в том же виде, как он записан в дневнике, и подскажи, сколько блинов повесить на каждую сторону.'].join('\n');
 }
 const num1 = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+

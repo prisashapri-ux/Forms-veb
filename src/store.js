@@ -34,19 +34,22 @@ function idb(mode, fn) {
 }
 
 export async function loadState() {
+  // Эта копия существует только после неудачной записи в IndexedDB.
+  // Она новее прежнего состояния в базе; успешная запись удаляет её.
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* перейдём на IndexedDB */ }
   try {
     const v = await idb('readonly', (s) => s.get(KEY));
     if (v) return v;
   } catch { /* перейдём на localStorage */ }
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* нет хранилища */ }
   return null;
 }
 
 let timer = null;
 let pending = null;
+let writes = Promise.resolve(true);
 
 async function write(state) {
   try {
@@ -88,15 +91,29 @@ export function saveState(state) {
 
 export function flush() {
   clearTimeout(timer);
-  if (!pending) return Promise.resolve(true);
+  if (!pending) return writes;
   const s = pending;
   pending = null;
-  return write(s);
+  // Последовательные записи не смогут перезаписать новое состояние старым.
+  writes = writes.catch(() => false).then(() => write(s));
+  return writes;
+}
+
+/** Замена разрешена только после подтверждённой записи снимка и нового состояния. */
+export async function replaceStateWithSnapshot(current, next) {
+  saveState(current);
+  if (!(await flush())) return false;
+  if (!(await saveSnapshot(current))) return false;
+  saveState(next);
+  if (await flush()) return true;
+  // Не сообщаем об успешном восстановлении; сохраняем снимок для повторной попытки.
+  return false;
 }
 
 export async function clearState() {
   pending = null;
   clearTimeout(timer);
+  await writes;
   try { await idb('readwrite', (s) => s.delete(KEY)); } catch { /* ignore */ }
   try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
 }
@@ -115,3 +132,4 @@ if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   addEventListener('pagehide', () => flush());
 }
+

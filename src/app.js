@@ -2,7 +2,7 @@
 import * as L from './logic.js';
 import { CATALOG } from './catalog.js';
 import { lineChart, barChart, dualChart, normScale, sparkline, rings } from './charts.js';
-import { loadState, saveState, flush, clearState, persist, saveSnapshot, loadSnapshot, dropSnapshot } from './store.js';
+import { loadState, saveState, flush, clearState, persist, replaceStateWithSnapshot, loadSnapshot } from './store.js';
 import { parsePdf, InBodyError } from './parser.js';
 import { demoState } from './demo.js';
 import { figureSVG } from './figures.js';
@@ -82,6 +82,7 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const parseNum = (s) => { const v = Number(String(s).replace(',', '.').replace(/\s/g, '')); return Number.isFinite(v) ? v : null; };
 // Запланированные тренировки (сохранены на день, но ещё не начаты) не идут в статистику и прогрессию.
 const doneWs = () => state.workouts.filter((w) => !w.planned);
+const recordedWs = () => doneWs().filter((w) => L.workoutSetCount(w) > 0);
 const workoutsSorted = () => [...state.workouts].sort((a, b) => (a.date < b.date ? 1 : -1));
 const fullMeasurements = () => state.measurements.filter((m) => !m.isPartial && !m.source);
 const latestFull = () => fullMeasurements().at(-1) || null;
@@ -462,7 +463,7 @@ function weekRings() {
   const program = L.programById(state.settings.activeProgram);
   const perWeek = program?.perWeek || 3;
   const ws0 = L.weekStart(new Date());
-  const week = doneWs().filter((w) => toDate(w.date) >= ws0 && w.exercises.length);
+  const week = recordedWs().filter((w) => toDate(w.date) >= ws0);
   const count = week.length;
   const mins = week.reduce((a, w) => a + (w.durationMinutes || 0), 0);
   const sets = week.reduce((a, w) => a + L.workoutSetCount(w), 0);
@@ -856,7 +857,7 @@ function cardioPhoto(w, ei) {
 function setsFromPrevious(name, beforeIso, exceptId) {
   const prev = L.previousEntry(doneWs(), name, beforeIso, exceptId);
   if (!prev) return groupOf(name) === 'cardio' ? [{ weight: 0, reps: 0, isWarmup: false, isDone: false }] : [{ weight: 0, reps: 0, isWarmup: false, isDone: false }, { weight: 0, reps: 0, isWarmup: false, isDone: false }, { weight: 0, reps: 0, isWarmup: false, isDone: false }];
-  return prev.e.sets.map((s) => ({ weight: s.weight, reps: s.reps, ...(s.level ? { level: s.level } : {}), isWarmup: !!s.isWarmup, isDone: false }));
+  return prev.e.sets.filter((s) => s.isDone !== false).map((s) => ({ weight: s.weight, reps: s.reps, ...(s.level ? { level: s.level } : {}), isWarmup: !!s.isWarmup, isDone: false }));
 }
 
 /** Время с начала тренировки: «12:05» или «1:02:30». */
@@ -1638,7 +1639,7 @@ function startTemplate(id) {
 
 // ───────── Советник ─────────
 function currentTips() {
-  const ws = doneWs().filter((w) => w.exercises.length);
+  const ws = recordedWs();
   return L.advisorTips(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), new Date());
 }
 const tipHtml = (t) => `<div class="tip ${t.kind}"><span class="dot">${icon[TIP_ICON[t.kind]] || icon.info}</span><div><b>${esc(t.title)}</b><p>${esc(t.text)}</p></div></div>`;
@@ -1663,7 +1664,7 @@ const ADVISOR_CHECKS = [
 
 const aiPlannedNow = () => AI.plannedText(state.workouts.filter((w) => w.planned && !w.finishedAt));
 function aiSummaryNow() {
-  const ws = doneWs().filter((w) => w.exercises.length);
+  const ws = recordedWs();
   const prof = [...state.measurements].reverse().find((m) => m.age || m.heightCm) || {};
   const bar = L.barText(machines(), ws.flatMap((w) => w.exercises.map((e) => e.name)));
   return AI.aiSummary(L.sessionsFrom(ws, groupOf), L.bodyPointsFrom(state.measurements), currentTips(), { age: prof.age, heightCm: prof.heightCm }) + (bar ? `\n\n${bar}` : '');
@@ -2007,7 +2008,7 @@ function viewAdvisor() {
 
 // ───────── Аналитика ─────────
 function viewAnalytics() {
-  const ws = doneWs().filter((w) => w.exercises.length);
+  const ws = recordedWs();
   const now = new Date();
   const P = ui.period;
   const inRange = (w, a, b) => { const d = L.daysBetween(w.date, now); return d >= a && d < b; };
@@ -2170,7 +2171,7 @@ const APP_VERSION = (new URL(import.meta.url).searchParams.get('v') || 'dev').re
 async function appUpdate() {
   if (!navigator.onLine) { toast('Нет интернета, обновить не получится'); return; }
   toast('Обновляю…');
-  await flush();
+  if (!(await flush())) { toast('Сначала сохрани резервную копию: данные не записаны'); return; }
   try { await (await navigator.serviceWorker?.getRegistration())?.update(); } catch { /* без сервис-воркера */ }
   try { for (const k of await caches.keys()) await caches.delete(k); } catch { /* кэша нет */ }
   setTimeout(() => location.reload(), 400);
@@ -2279,13 +2280,13 @@ async function exportBackup() {
 function importBackup(file) {
   file.text().then((text) => {
     let next;
-    try { next = L.readBackup(text); } catch (e) { toast(e.message); return; }
-    next.settings = { ...state.settings, ...next.settings, activeProgram: state.settings.activeProgram };
+    try { next = L.readBackup(text, state.settings); } catch (e) { toast(e.message); return; }
     confirmSheet('Восстановить копию?', `В копии ${next.measurements.length} замеров, ${next.workouts.length} тренировок и ${next.food.length} записей еды. Текущие данные в браузере заменятся.`, 'Заменить данные', () => {
-      saveSnapshot(state).then((ok) => {
-        if (ok) snapAt = new Date().toISOString();
-        state = next; save(); go('body'); render(true);
-        toast(ok ? 'Данные восстановлены. Вернуть как было можно в Настройках' : 'Данные восстановлены');
+      replaceStateWithSnapshot(state, next).then((ok) => {
+        if (!ok) { toast('Не удалось безопасно восстановить копию. Текущие данные не заменены.'); return; }
+        snapAt = new Date().toISOString();
+        state = next; go('body'); render(true);
+        toast('Данные восстановлены. Вернуть как было можно в Настройках');
       });
     });
   });
@@ -2316,9 +2317,10 @@ document.addEventListener('click', (ev) => {
     case 'tour': startTour(); break;
     case 'undo-restore':
       confirmSheet('Вернуть прежние данные?', 'Данные станут такими, какими были до восстановления из файла. То, что ты записал после восстановления, пропадёт.', 'Вернуть', () => {
-        loadSnapshot().then((snap) => {
+        loadSnapshot().then(async (snap) => {
           if (!snap?.state) { toast('Прежних данных не нашлось'); snapAt = null; render(); return; }
-          state = snap.state; snapAt = null; save(); dropSnapshot(); render(true); toast('Вернул прежние данные');
+          if (!(await replaceStateWithSnapshot(state, snap.state))) { toast('Не удалось безопасно вернуть данные. Текущие данные не заменены.'); return; }
+          state = snap.state; snapAt = new Date().toISOString(); render(true); toast('Вернул прежние данные');
         });
       });
       break;
@@ -2515,7 +2517,12 @@ async function start() {
     // Не перезагружаемся посреди дела: ИИ читает табло, открыт таймер, чат или окно, идёт тренировка.
     // Тогда обновление ждёт, пока приложение свернут или откроют другой экран.
     const busyNow = () => !!(tourOpen() || player.el || aiState.busy || cardioBusy || gymBusy || sheetClose || route().name === 'w');
-    const tryReload = () => { if (pendingReload && !reloaded && !busyNow()) { reloaded = true; flush(); location.reload(); } };
+    const tryReload = async () => {
+      if (!pendingReload || reloaded || busyNow()) return;
+      reloaded = true;
+      if (await flush()) location.reload();
+      else reloaded = false;
+    };
     let pendingReload = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!hadController || pendingReload) return;
@@ -2531,3 +2538,4 @@ async function start() {
 }
 start().catch((e) => window.__formaFail?.(e?.message || String(e)));
 export { state, flush };
+
