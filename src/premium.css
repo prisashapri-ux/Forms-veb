@@ -203,3 +203,16 @@ body.chat-mode.kb main.premium-view { padding-bottom: 16px; }
 @media (max-width: 331px) {
   .premium-days { margin-inline: -6px; }
 }
+
+/* Wider preview layout; mobile reference remains unchanged. */
+.premium-view .premium-notice { overflow-wrap: anywhere; }
+.premium-report-arrow .premium-svg { width: 24px; height: 24px; }
+@media (min-width: 768px) {
+  .app, body.chat-mode .app { max-width: 800px; }
+  .tabbar { width: min(100%, 800px); }
+  body.chat-mode main.ai-view { max-width: none; }
+  .premium-head, main.premium-view { --edge: 24px; }
+  .premium-hero { min-height: calc(220px + env(safe-area-inset-top)); }
+  .premium-tilegrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .premium-tile { overflow-wrap: anywhere; }
+}
