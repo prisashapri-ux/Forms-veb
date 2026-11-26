@@ -431,7 +431,7 @@ function viewBody() {
         ${recent.length ? lineChart(recent, { height: 145, area: false, label }) : '<p class="premium-notice">Добавь замер, чтобы увидеть динамику.</p>'}</section>
       <section class="premium-card premium-panel"><div class="premium-row"><div><h2>InBody</h2>
         <p class="premium-label">${measurement ? `Последний замер · ${fmtDay(measurement.day, false)}` : 'Замеров пока нет'}</p></div>
-        <span class="premium-label premium-report-arrow" aria-hidden="true">↗</span></div>
+        <span class="premium-label premium-report-arrow" aria-hidden="true"><svg class="premium-svg" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg></span></div>
         <button class="premium-primary" data-act="import-pdf">Импорт PDF InBody</button></section>
       <details class="premium-card premium-more" ${ui.bodyDetails ? 'open' : ''}><summary>${measurement ? 'Замеры и подробные показатели' : 'Другие способы начать'}</summary><div>${previous.html}</div></details>`,
     after: () => {
@@ -1990,7 +1990,7 @@ ${esc(aiPlannedNow())}</pre></details>` : ''}</div>`;
       <div class="premium-tilegrid">${premiumTile('gym', 'Тренажёр', 'Распознать по фото', null, `data-act="${hasKey ? 'ai-photo' : 'ai-key'}" ${aiState.busy ? 'disabled' : ''}`)}
       ${AI_SUGGEST.slice(0, 3).map(([title, description, , symbol], i) => premiumTile(symbol, title, description, null,
         `data-act="${action}" data-i="${i}" ${aiState.busy ? 'disabled' : ''}`)).join('')}</div>
-      ${attach}${composer}${notice}${options}
+      ${notice}${attach}${composer}${options}
       <button class="text-btn" data-act="${action}" data-i="3">Вопрос о питании</button>`,
     after: () => { autoGrow(); fitViewport(); },
   };
