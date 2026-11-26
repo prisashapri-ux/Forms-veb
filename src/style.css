@@ -1,28 +1,28 @@
-/* Форма в стиле iOS: системные цвета и фон «grouped», крупные заголовки, списки со скруглёнными
-   секциями, полупрозрачные панели. У каждого раздела свой цвет, как категории в «Здоровье». */
 :root {
-  --bg: #f2f2f7;
+  --bg: #eef2f8;
   --card: #ffffff;
-  --card2: #f2f2f7;
-  --fg: #000000;
-  --muted: #8a8a8e;
+  --card2: #e8eef9;
+  --fg: #141c31;
+  --muted: #505c73;
   --label2: rgba(60, 60, 67, 0.6);
   --line: rgba(60, 60, 67, 0.18);
   --grid: rgba(60, 60, 67, 0.1);
   --fill: rgba(120, 120, 128, 0.12);
   --fill2: rgba(120, 120, 128, 0.2);
   --material: rgba(249, 249, 249, 0.82);
-  --blue: #007aff;
-  --green: #34c759;
-  --orange: #ff9500;
-  --red: #ff3b30;
-  --pink: #ff2d55;
-  --purple: #af52de;
+  --blue: #1757cf;
+  --green: #21713e;
+  --orange: #954a00;
+  --red: #be2b28;
+  --pink: #b92655;
+  --purple: #7a38a6;
   --indigo: #5856d6;
-  --teal: #30b0c7;
+  --teal: #146c7a;
   --yellow: #ffcc00;
   --accent: var(--blue);
   --accent-ink: #ffffff;
+  --home-ink: #fff;
+  --program-top: #2156b9; --program-bottom: #143f93;
   --below: var(--teal);
   --above: var(--orange);
   --normal: var(--green);
@@ -31,31 +31,24 @@
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
   --font-display: -apple-system-headline, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
   --font-rounded: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --radius: 12px;
+  --radius: 22px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #000000; --card: #1c1c1e; --card2: #2c2c2e; --fg: #ffffff; --muted: #8d8d93; --label2: rgba(235, 235, 245, 0.6);
+    --bg: #101322; --card: #1c2136; --card2: #262c45; --fg: #f4f6ff; --muted: #b5bfd9; --label2: rgba(235, 235, 245, 0.6);
     --line: rgba(84, 84, 88, 0.6); --grid: rgba(84, 84, 88, 0.45); --fill: rgba(118, 118, 128, 0.24); --fill2: rgba(118, 118, 128, 0.32);
-    --material: rgba(22, 22, 24, 0.82); --blue: #0a84ff; --green: #30d158; --orange: #ff9f0a; --red: #ff453a; --pink: #ff375f;
-    --purple: #bf5af2; --indigo: #5e5ce6; --teal: #40c8e0; --yellow: #ffd60a; color-scheme: dark;
+    --material: rgba(21, 25, 43, 0.92); --blue: #a9a4ff; --accent-ink: #151735; --home-ink: #141c31; --program-top: #403b7c; --program-bottom: #29264e; --green: #30d158; --orange: #ff9f0a; --red: #ff453a; --pink: #ff375f;
+    --purple: #d2a3ff; --indigo: #aaa6ff; --teal: #40c8e0; --yellow: #ffd60a; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #000000; --card: #1c1c1e; --card2: #2c2c2e; --fg: #ffffff; --muted: #8d8d93; --label2: rgba(235, 235, 245, 0.6);
+  --bg: #101322; --card: #1c2136; --card2: #262c45; --fg: #f4f6ff; --muted: #b5bfd9; --label2: rgba(235, 235, 245, 0.6);
   --line: rgba(84, 84, 88, 0.6); --grid: rgba(84, 84, 88, 0.45); --fill: rgba(118, 118, 128, 0.24); --fill2: rgba(118, 118, 128, 0.32);
-  --material: rgba(22, 22, 24, 0.82); --blue: #0a84ff; --green: #30d158; --orange: #ff9f0a; --red: #ff453a; --pink: #ff375f;
-  --purple: #bf5af2; --indigo: #5e5ce6; --teal: #40c8e0; --yellow: #ffd60a; color-scheme: dark;
+  --material: rgba(21, 25, 43, 0.92); --blue: #a9a4ff; --accent-ink: #151735; --home-ink: #141c31; --program-top: #403b7c; --program-bottom: #29264e; --green: #30d158; --orange: #ff9f0a; --red: #ff453a; --pink: #ff375f;
+  --purple: #d2a3ff; --indigo: #aaa6ff; --teal: #40c8e0; --yellow: #ffd60a; color-scheme: dark;
 }
 
-/* Цвет раздела, как категории в «Здоровье». */
-body[data-tab="body"] { --accent: var(--purple); }
-body[data-tab="diary"] { --accent: var(--orange); }
-body[data-tab="home"] { --accent: var(--pink); }
-body[data-tab="analytics"] { --accent: var(--blue); }
-body[data-tab="food"] { --accent: var(--green); }
-:root { --accent-soft: color-mix(in srgb, var(--accent) 22%, var(--card)); --band: color-mix(in srgb, var(--accent) 10%, transparent); }
 body { --accent-soft: color-mix(in srgb, var(--accent) 24%, var(--card)); --band: color-mix(in srgb, var(--accent) 11%, transparent); }
 
 * { box-sizing: border-box; }
@@ -136,7 +129,7 @@ main.view {
 .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 0; margin: 0 -16px; padding-inline: 16px; }
 .chips::-webkit-scrollbar { display: none; }
 .chip { border: 0; border-radius: 999px; padding: 6px 14px; background: var(--fill); color: var(--fg); font-size: 15px; white-space: nowrap; }
-.chip.on { background: var(--accent); color: #fff; font-weight: 600; }
+.chip.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--fill); border-radius: 9px; padding: 2px; gap: 2px; }
 .seg button { border: 0; background: transparent; border-radius: 7px; padding: 6px 4px; font-size: 13px; font-weight: 500; letter-spacing: -0.08px; line-height: 18px; }
 .seg button.on { background: var(--card); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12), 0 3px 1px rgba(0, 0, 0, 0.04); font-weight: 600; }
@@ -264,11 +257,11 @@ main.view {
 .workout-card .grow { flex: 1; min-width: 0; }
 .workout-card .ttl { font-weight: 600; }
 .stat-line { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: -0.08px; }
-.next-up { background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 88%, #fff), color-mix(in srgb, var(--accent) 80%, #000)); color: #fff; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 8px 12px; }
+.next-up { background: linear-gradient(145deg, var(--program-top), var(--program-bottom)); color: #fff; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 8px 12px; }
 .next-up .muted { color: rgba(255, 255, 255, 0.8); }
 .next-up h2 { color: #fff; }
 .next-up .figure { width: 96px; height: 96px; color: #fff; grid-row: 1 / span 2; grid-column: 2; align-self: center; }
-.next-up .btn { background: #fff; color: color-mix(in srgb, var(--accent) 80%, #000); grid-column: 1 / -1; }
+.next-up .btn { background: #fff; color: var(--program-bottom); grid-column: 1 / -1; }
 
 .ex-card { padding: 12px 14px 8px; }
 .ex-head { display: flex; align-items: center; gap: 12px; }
@@ -399,10 +392,10 @@ main.view {
   backdrop-filter: saturate(1.8) blur(20px); -webkit-backdrop-filter: saturate(1.8) blur(20px);
   border-top: 0.5px solid var(--line); padding: 4px max(4px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 2px) max(4px, env(safe-area-inset-left, 0px));
 }
-.tabbar nav { max-width: 680px; margin: 0 auto; display: grid; grid-template-columns: repeat(7, 1fr); }
-.tabbar a { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 3px 0 2px; font-size: 10px; font-weight: 500; letter-spacing: 0.1px; color: #999; text-decoration: none; }
+.tabbar nav { max-width: 680px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tabbar a { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 3px 0 2px; font-size: 10px; font-weight: 500; letter-spacing: 0.1px; color: var(--muted); text-decoration: none; }
 .tabbar a svg { width: 27px; height: 27px; }
-.tabbar a.on { color: var(--tabc); }
+.tabbar a.on { color: var(--accent); }
 
 /* Листы */
 .sheet-back { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.32); z-index: 30; display: flex; align-items: flex-end; justify-content: center; }
@@ -506,7 +499,6 @@ main.view {
 .advisor-card .ask-ai svg { width: 16px; height: 16px; stroke-width: 2.2; }
 .chat a.btn { color: #fff; }
 
-body[data-tab="ai"] { --accent: var(--indigo); }
 .icon-btn.plain { background: none; color: var(--accent); margin: 0; }
 .nav-left { display: flex; align-items: center; }
 
@@ -563,7 +555,7 @@ body.chat-mode.kb .ai-composer { padding-bottom: 8px; }
 .ai-peek summary { color: var(--muted); cursor: pointer; list-style: none; white-space: nowrap; }
 .ai-peek summary::-webkit-details-marker { display: none; }
 .ai-peek[open] .summary-pre { position: absolute; left: 12px; right: 12px; bottom: 100%; max-height: 50vh; box-shadow: var(--shadow-pop); background: var(--card); }
-.ai-composer .send { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--indigo); color: #fff; display: grid; place-items: center; padding: 0; }
+.ai-composer .send { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; padding: 0; }
 .ai-composer .send svg { width: 20px; height: 20px; stroke-width: 2.6; }
 .ai-composer .send:disabled { opacity: 0.35; }
 .ask-card { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
@@ -761,3 +753,73 @@ body.touring .toast { display: none; }
 .field input[type="datetime-local"] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left; }
 .field input[type="datetime-local"]::-webkit-date-and-time-value { text-align: left; }
 .grid2.dt { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+
+/* Пять основных экранов */
+.app { max-width: 800px; }
+.top { padding-top: calc(env(safe-area-inset-top, 0px) + 16px); }
+.top:not(.nav) h1 { font-size: clamp(28px, 8.3vw, 44px); line-height: 1.08; letter-spacing: -0.035em; }
+main.view { gap: 16px; padding-top: 12px; overflow-wrap: anywhere; }
+main.view:focus { outline: none; }
+.card { border: 1px solid var(--line); }
+.icon-btn, .text-btn, .btn.small, .seg button, .chip, .x-btn, .done-btn,
+.set-no, .timer button, .ai-composer .send, .tour-x, .search { min-height: 44px; }
+.icon-btn, .x-btn, .ai-composer .send, .tour-x { min-width: 44px; }
+.text-btn { display: inline-flex; align-items: center; gap: 4px; }
+.seg button { min-width: 0; }
+.btn, .tabbar a { text-align: center; }
+.tabbar nav { max-width: 800px; }
+.tabbar #tabs a { min-height: 50px; justify-content: center; border-radius: 15px; padding: 4px 1px; }
+.tabbar #tabs a span { font-size: clamp(10px, 2.8vw, 12px); letter-spacing: 0; }
+.tabbar a.on { background: var(--band); font-weight: 700; }
+.tabbar a:focus-visible { outline-offset: -2px; }
+.section-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; background: var(--fill); border-radius: 16px; }
+.section-nav a { min-height: 44px; display: grid; place-items: center; border-radius: 13px; color: var(--muted); font-size: 14px; text-align: center; text-decoration: none; }
+.section-nav a[aria-current] { color: var(--accent); background: var(--card); font-weight: 700; }
+.workout-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; }
+.workout-shortcuts a { flex: 1 1 auto; padding-inline: 12px; }
+.today-grid { display: grid; gap: 14px; }
+.today-grid > * { min-width: 0; }
+.today-grid :is(h2, p) { margin: 0; }
+.today-workout, .today-food { padding: 18px; }
+.today-workout { background: var(--card); background: linear-gradient(155deg, var(--card2), var(--card) 78%); }
+.today-workout h2 { font: 750 clamp(24px, 7vw, 34px)/1.12 var(--font-display); letter-spacing: -0.025em; }
+.today-workout .btn { margin-top: 6px; }
+.today-workout .text-btn { align-self: center; }
+.today-grid .section-title { margin: 0; }
+.today-week h2 { font: 700 22px/28px var(--font-display); }
+.today-food .ring svg { max-width: 104px; }
+.today-calendar .cal-card { padding-inline: 4px; }
+.today-calendar .cal-head { padding-inline: 8px; }
+.cal-g, .cal-w { gap: 0; }
+.cal-d { min-height: 44px; aspect-ratio: auto; }
+.cal-d.has { background: var(--accent); color: var(--accent-ink); }
+.cal-d.has.home { background: var(--pink); color: var(--home-ink); }
+.cal-d.plan, .cal-d.today:not(.has) { color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.set-row { grid-template-columns: 44px repeat(2, minmax(0, 1fr)) 44px 44px; gap: 4px; }
+.sets.cardio .set-row { grid-template-columns: 44px repeat(3, minmax(0, 1fr)) 44px 44px; gap: 3px; }
+.set-row input { padding-inline: 1px; }
+.done-btn.on { background: var(--accent); color: var(--accent-ink); }
+.ai-disclosure { margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--fill); }
+.ai-hello { padding-block: 14px 0; }
+.ai-photo-cta { border: 1px solid var(--line); }
+.ai-photo-cta .sub { display: block; color: var(--muted); font-size: 14px; }
+.ai-composer .row2 { flex-wrap: wrap; }
+body.chat-mode .ai-composer { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+body.chat-mode.kb .ai-composer { padding-bottom: 8px; }
+:root { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 102px); scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 116px); }
+@media (min-width: 700px) {
+  .today-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .today-food { grid-column: 2; }
+  .today-week { grid-column: 1; }
+  .today-calendar { grid-column: 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing i { animation: none; }
+  .player-progress > i { transition: none; }
+}
+@media (min-width: 371px) and (max-width: 400px) {
+  .cal-card { padding-inline: 8px; }
+}
+@media (max-width: 370px) {
+  .cal-card, .today-calendar .cal-card { margin-inline: -15px; padding-inline: 1px; }
+}

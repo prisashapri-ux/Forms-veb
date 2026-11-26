@@ -432,6 +432,8 @@ function bodyTips(points, sessions, now) {
 
 // ───────── Состояние и резервная копия (совместима с Backup.swift, version 2) ─────────
 
+export const validTheme = (theme) => ['system', 'light', 'dark'].includes(theme);
+
 export function emptyState() {
   return {
     measurements: [],
@@ -643,6 +645,7 @@ const finite = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >
 /** Читает резервную копию iOS- или веб-версии. Бросает Error с понятным текстом. */
 function backupSettings(s = {}) {
   const out = {};
+  if (validTheme(s.theme)) out.theme = s.theme;
   if (s.activeProgram === null || typeof s.activeProgram === 'string') out.activeProgram = s.activeProgram;
   if (s.nutritionGoal === null || Object.prototype.hasOwnProperty.call(GOALS, s.nutritionGoal)) out.nutritionGoal = s.nutritionGoal;
   if (Number.isFinite(s.restSeconds) && s.restSeconds > 0 && s.restSeconds <= 3600) out.restSeconds = s.restSeconds;
