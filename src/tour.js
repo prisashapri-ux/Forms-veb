@@ -1,38 +1,35 @@
 // Обучение для новых пользователей: экран приветствия, короткий тур по вкладкам с подсветкой
-// и экран «С чего начать». Показывается при первом запуске, повторяется из Настроек.
+// и экран «С чего начать». Открывается из профиля или настроек.
 // Кнопки с data-act на последнем экране обрабатывает общий обработчик кликов в app.js.
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 // Шаги тура по вкладкам: id вкладки, заголовок, текст, подсказки.
 export const TOUR_STEPS = [
-  ['body', 'Тело', 'Здесь твой состав тела по отчётам InBody: вес, мышцы, жир, вода и сегменты рук, ног и торса.',
-    ['Скачай PDF отчёта в приложении DDX Fitness и загрузи кнопкой со стрелкой вверху.', 'Каждый новый отчёт добавляется в историю, графики строятся сами.', 'Шестерёнка открывает настройки и резервную копию.']],
-  ['diary', 'Дневник', 'Тренировки в зале: начни пустую, повтори прошлую или возьми готовую программу.',
-    ['Отмечай подход галочкой, и запустится таймер отдыха.', '«Форма» подскажет, когда добавить вес или повторы.', 'В календаре видны прошедшие и запланированные тренировки.']],
-  ['gym', 'Тренажёры', 'Тренажёры с анимацией движения и подсказками по технике.',
-    ['Найди тренажёр поиском или по группе мышц.', 'Сфотографируй тренажёр в зале, и «Форма» подскажет, что это за упражнение.', 'Сохраняй свои настройки сиденья и упоров.']],
-  ['home', 'Дома', 'Тренировки без зала: комплексы на таймере с голосовыми подсказками.',
-    ['Есть разделы для перекладины, резинок, растяжки и осанки.', 'Нагрузка растёт сама: каждые 3 тренировки уровень повышается.', 'После отрезка можно записать, сколько повторов получилось.']],
-  ['ai', 'ИИ', 'Чат с ИИ-советником: спроси про программу, технику или питание, пришли фото тренажёра.',
-    ['Нужен свой ключ DeepSeek, его вставляют в Настройках.', 'Советник видит твои замеры и тренировки, поэтому отвечает по делу.']],
-  ['analytics', 'Анализ', 'Прогресс в цифрах: объём по группам мышц, рекорды и динамика каждого упражнения.',
-    ['Советник без интернета подскажет, где ты отстаёшь и когда отдохнуть.', 'Нажми на упражнение, чтобы увидеть его историю.']],
-  ['food', 'Питание', 'Белок и калории за день. Норма считается по твоему отчёту InBody и цели.',
-    ['Выбери цель: похудеть, держать вес или набрать мышцы.', 'Добавляй еду из готовых вариантов или вписывай свою.']],
+  ['today', 'Сегодня', 'Отсюда можно сразу начать или продолжить тренировку.',
+    ['Здесь же видны цель, питание, активность за неделю и календарь.']],
+  ['diary', 'Тренировки', 'Выбери программу, начни пустую тренировку или запусти комплекс дома.',
+    ['После отметки подхода запускается таймер отдыха.', 'Тренажёры и прошлые тренировки доступны в этом разделе.']],
+  ['body', 'Прогресс', 'Следи за составом тела, динамикой и рекордами.',
+    ['PDF InBody можно импортировать в любой момент. Замеры сохраняются в истории.']],
+  ['ai', 'ИИ-тренер', 'Спроси о программе, технике или питании. Можно приложить фото тренажёра.',
+    ['Для запросов нужен ключ DeepSeek. Сообщения, фото и сводка дневника передаются в этот сервис.']],
+  ['profile', 'Профиль', 'Выбери цель, тему оформления и сделай резервную копию.',
+    ['Питание также доступно с экрана «Сегодня».']],
 ];
 
 const FEATURES = [
-  ['body', 'var(--purple)', 'Состав тела', 'Загружай отчёты InBody из DDX и следи за мышцами и жиром.'],
-  ['diary', 'var(--orange)', 'Тренировки', 'Записывай подходы в зале и занимайся дома по таймеру.'],
-  ['spark', 'var(--indigo)', 'Подсказки', 'Советник подскажет, когда прибавить вес и где ты отстаёшь.'],
-  ['lock', 'var(--green)', 'Данные только у тебя', 'Всё хранится в этом браузере и никуда не отправляется.'],
+  ['diary', 'var(--blue)', 'Тренировки', 'Записывай подходы в зале и занимайся дома по таймеру.'],
+  ['chart', 'var(--purple)', 'Прогресс', 'Следи за замерами, нагрузкой и рекордами.'],
+  ['food', 'var(--green)', 'Питание', 'Записывай калории и белок с учётом своей цели.'],
 ];
 
 let el = null;
 let ctx = null;
 let page = 0; // 0 приветствие, 1..N вкладки, N+1 «С чего начать»
 let returnHash = '';
+let opener;
+const background = () => document.querySelectorAll('#app, .tabbar, #timer');
 const LAST = TOUR_STEPS.length + 1;
 
 export const tourOpen = () => !!el;
@@ -47,12 +44,15 @@ export function openTour(opts, startPage = 0) {
   ctx = opts;
   page = startPage;
   returnHash = location.hash;
+  opener = document.activeElement;
   el = document.createElement('div');
   el.className = 'tour';
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-modal', 'true');
+  el.tabIndex = -1;
   el.addEventListener('click', onClick);
   document.body.append(el);
+  background().forEach((node) => { node.inert = true; });
   document.body.classList.add('touring');
   addEventListener('keydown', onKey);
   addEventListener('resize', place);
@@ -64,6 +64,9 @@ export function closeTour(finished = false, silent = false) {
   el.remove();
   el = null;
   document.body.classList.remove('touring');
+  background().forEach((node) => { node.inert = false; });
+  const focus = opener?.isConnected ? opener : document.querySelector('#view');
+  focus?.focus({ preventScroll: true });
   removeEventListener('keydown', onKey);
   removeEventListener('resize', place);
   if (!silent) ctx?.onClose?.(finished);
@@ -75,7 +78,7 @@ function onKey(e) {
   else if (e.key === 'ArrowLeft') step(-1);
 }
 
-function restore() { if (returnHash !== undefined) ctx.go(returnHash.replace(/^#/, '') || 'body'); }
+function restore() { if (returnHash !== undefined) ctx.go(returnHash.replace(/^#/, '') || 'today'); }
 
 function step(d) {
   const next = Math.max(0, Math.min(LAST, page + d));
@@ -87,18 +90,19 @@ function step(d) {
 function onClick(e) {
   const b = e.target.closest('[data-tour], [data-act]');
   if (!b) return;
-  if (b.dataset.act) { closeTour(true); ctx.go('body'); return; } // дальше кнопку обработает app.js
+  if (b.dataset.act) { closeTour(true); ctx.go('today'); return; } // дальше кнопку обработает app.js
   const t = b.dataset.tour;
   if (t === 'next') step(1);
   else if (t === 'back') step(-1);
   else if (t === 'start') step(1);
   else if (t === 'skip') { closeTour(false); restore(); }
-  else if (t === 'done') { closeTour(true); ctx.go('body'); }
+  else if (t === 'done') { closeTour(true); ctx.go('today'); }
 }
 
 const dots = () => `<div class="tour-dots" aria-hidden="true">${TOUR_STEPS.map((_, i) => `<i class="${i + 1 === page ? 'on' : ''}"></i>`).join('')}</div>`;
 
 function draw() {
+  el.focus({ preventScroll: true });
   const ic = ctx.icon;
   el.classList.toggle('full', page === 0 || page === LAST);
   if (page === 0) {
@@ -124,15 +128,15 @@ function draw() {
         <h1>С чего начать</h1>
         <ol class="tour-start">
           <li><b>Загрузи отчёт InBody.</b> PDF из приложения DDX Fitness заполнит раздел «Тело».</li>
-          <li><b>Проведи первую тренировку.</b> В «Дневнике» для зала или в «Дома» по таймеру.</li>
-          ${standalone ? '' : '<li><b>Поставь «Форму» на экран «Домой».</b> В Safari нажми «Поделиться», затем «На экран „Домой“». Так iPhone не сотрёт её данные.</li>'}
-          <li><b>Раз в неделю сохраняй копию</b> в Настройках: данные живут только в этом браузере.</li>
+          <li><b>Проведи первую тренировку.</b> Начни на экране «Сегодня» или выбери домашний комплекс в «Тренировках».</li>
+          ${standalone ? '' : '<li><b>Поставь «Форму» на экран «Домой».</b> В Safari нажми «Поделиться», затем «На экран „Домой“».</li>'}
+          <li><b>Раз в неделю сохраняй копию</b> в Настройках: файл поможет перенести дневник на другое устройство.</li>
         </ol>
       </div>
       <div class="tour-actions">
-        ${ctx.empty ? `<button class="btn block" data-act="import-pdf">${ic.upload} Загрузить отчёт InBody</button>
+        ${ctx.empty ? `<button class="btn secondary block" data-act="import-pdf">${ic.upload} Загрузить отчёт InBody</button>
         <button class="btn secondary block" data-act="load-demo">Посмотреть на примерных данных</button>` : ''}
-        <button class="btn ${ctx.empty ? 'ghost' : ''} block" data-tour="done">${ctx.empty ? 'Начать с нуля' : 'Готово'}</button>
+        <button class="btn block" data-tour="done">${ctx.empty ? 'К первой тренировке' : 'Готово'}</button>
       </div></div>`;
     return;
   }

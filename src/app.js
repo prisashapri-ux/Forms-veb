@@ -10,6 +10,7 @@ import { HOME, HOME_CATALOG, homeById, homeSteps, homeMinutes, homeWorkout, home
 import { PULLUP_CATALOG } from './extras.js';
 import * as AI from './ai.js';
 import { openTour, tourOpen } from './tour.js';
+import { parseRoute, TAB_OF } from './navigation.js';
 
 Object.assign(CATALOG, HOME_CATALOG, PULLUP_CATALOG);
 
@@ -131,6 +132,7 @@ function toast(text) {
 let sheetClose = null;
 function openSheet({ title, body, left = 'Отмена', right = null, onRight = null, onOpen = null }) {
   closeSheet();
+  const opener = document.activeElement;
   const back = document.createElement('div');
   back.className = 'sheet-back';
   back.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
@@ -141,10 +143,21 @@ function openSheet({ title, body, left = 'Отмена', right = null, onRight =
     if (e.target === back || e.target.closest('[data-sheet="left"]')) closeSheet();
     else if (e.target.closest('[data-sheet="right"]')) onRight?.(back);
   });
+  back.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); closeSheet(); }
+  });
   document.body.append(back);
+  const background = [$('#app'), $('.tabbar'), $('#timer')];
+  background.forEach((node) => { node.inert = true; });
   document.body.style.overflow = 'hidden';
-  sheetClose = () => { back.remove(); document.body.style.overflow = ''; };
+  sheetClose = () => {
+    back.remove();
+    background.forEach((node) => { node.inert = false; });
+    document.body.style.overflow = '';
+    opener?.focus({ preventScroll: true });
+  };
   onOpen?.(back);
+  if (!back.contains(document.activeElement)) back.querySelector('[data-sheet="left"]').focus({ preventScroll: true });
   return back;
 }
 function closeSheet() { sheetClose?.(); sheetClose = null; }
@@ -157,32 +170,36 @@ function confirmSheet(title, text, action, onYes, danger = true) {
 }
 
 // ───────── Маршрутизация ─────────
-function route() {
-  const h = decodeURIComponent(location.hash.slice(1));
-  const [name, ...rest] = h.split('-');
-  return { name: name || 'body', arg: rest.join('-') };
-}
+const route = () => parseRoute(location.hash);
 const go = (hash) => { location.hash = hash; };
 addEventListener('hashchange', () => { closeSheet(); render(true); });
 
-const TABS = [['body', 'Тело', icon.body, 'var(--purple)'], ['diary', 'Дневник', icon.diary, 'var(--orange)'], ['gym', 'Тренажёры', icon.dumbbell, 'var(--teal)'], ['home', 'Дома', icon.home, 'var(--pink)'], ['ai', 'ИИ', icon.spark, 'var(--indigo)'], ['analytics', 'Анализ', icon.chart, 'var(--blue)'], ['food', 'Питание', icon.food, 'var(--green)']];
-const TAB_OF = { body: 'body', diary: 'diary', w: 'diary', programs: 'diary', catalog: 'diary', home: 'home', plan: 'home', build: 'diary', gym: 'gym', calendar: 'diary', advisor: 'analytics', ai: 'ai', analytics: 'analytics', ex: 'analytics', food: 'food', settings: 'body' };
-const TAB_TITLE = { body: 'Тело', diary: 'Дневник', gym: 'Тренажёры', home: 'Дома', ai: 'ИИ', analytics: 'Аналитика', food: 'Питание' };
+const TABS = [
+  ['today', 'Сегодня', icon.home],
+  ['diary', 'Тренировки', icon.dumbbell],
+  ['body', 'Прогресс', icon.chart],
+  ['ai', 'ИИ-тренер', icon.spark],
+  ['profile', 'Профиль', icon.person],
+];
+const TAB_TITLE = { today: 'Сегодня', body: 'Прогресс', diary: 'Тренировки', gym: 'Тренажёры', home: 'Дома', ai: 'ИИ-тренер', analytics: 'Динамика', food: 'Питание', profile: 'Профиль' };
 
 function render(scrollTop = false) {
   const r = route();
-  const views = { body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, gym: viewGym, calendar: viewCalendar, advisor: viewAdvisor, ai: viewAI, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
-  const v = (views[r.name] || viewBody)(r.arg);
+  const views = { today: viewToday, profile: viewProfile, body: viewBody, diary: viewDiary, w: viewWorkout, programs: viewPrograms, catalog: viewCatalog, home: viewHome, plan: viewPlan, build: viewBuild, gym: viewGym, calendar: viewCalendar, advisor: viewAdvisor, ai: viewAI, analytics: viewAnalytics, ex: viewExercise, food: viewFood, settings: viewSettings };
+  const v = views[r.name](r.arg);
   if (r.name === 'settings' && r.arg === 'ai') setTimeout(() => { $('#ai-settings')?.scrollIntoView({ block: 'start' }); $('#ai-key')?.focus(); }, 0);
   const y = scrollY;
-  const tab = TAB_OF[r.name] || 'body';
+  const tab = TAB_OF[r.name];
+  document.documentElement.dataset.theme = L.validTheme(state.settings.theme) ? state.settings.theme : 'system';
+  document.body.dataset.screen = r.name;
   if (r.name !== 'build') ui.draft = null;
   document.body.dataset.tab = tab;
   document.body.classList.toggle('chat-mode', r.name === 'ai');
-  $('#app').innerHTML = `<header class="top ${v.top.includes('data-nav') ? 'nav' : ''}">${v.top}</header><main class="view ${v.cls || ''}" id="view">${v.html}</main>${v.foot || ''}`;
-  $('#tabs').innerHTML = TABS.map(([id, t, ic, c]) => `<a href="#${id}" style="--tabc:${c}" class="${tab === id ? 'on' : ''}" ${tab === id ? 'aria-current="page"' : ''}>${ic}<span>${t}</span></a>`).join('');
+  $('#app').innerHTML = `<header class="top ${v.top.includes('data-nav') ? 'nav' : ''}">${v.top}</header><main class="view ${v.cls || ''}" id="view" tabindex="-1">${v.html}</main>${v.foot || ''}`;
+  $('#tabs').innerHTML = TABS.map(([id, t, ic]) => `<a href="#${id}" class="${tab === id ? 'on' : ''}" ${tab === id ? 'aria-current="page"' : ''}>${ic}<span>${t}</span></a>`).join('');
   document.title = v.title ? `${v.title} · Форма` : 'Форма';
   if (scrollTop) scrollTo(0, 0); else scrollTo(0, y);
+  if (scrollTop && !tourOpen()) $('#view').focus({ preventScroll: true });
   v.after?.();
   lockUpdate();
 }
@@ -198,6 +215,87 @@ const banner = (html, btn, ic = icon.info, color = 'var(--orange)') => `<div cla
 function demoBanner() {
   if (!state.demo) return '';
   return banner('Сейчас показаны <b>примерные данные</b>, не твои. Удали их, когда загрузишь свой отчёт.', '<button class="btn small secondary" data-act="clear-demo">Удалить</button>');
+}
+
+function sectionNav(label, links, current) {
+  return `<nav class="section-nav" aria-label="${label}">${links.map(([id, title]) =>
+    `<a href="#${id}" ${id === current ? 'aria-current="page"' : ''}>${title}</a>`).join('')}</nav>`;
+}
+
+const workoutNav = (current) => sectionNav('Тренировки', [
+  ['programs', 'Программа'], ['diary', 'Дневник'], ['diary-history', 'История'],
+], current);
+const progressNav = (current) => sectionNav('Прогресс', [
+  ['body', 'Состав тела'], ['analytics', 'Динамика'], ['analytics-records', 'Рекорды'],
+], current);
+
+function nutritionToday() {
+  const latest = latestFull();
+  const goal = state.settings.nutritionGoal || L.defaultGoal(latest);
+  const weight = [...state.measurements].reverse().find((m) => m.values.weight != null)?.values.weight;
+  const targets = L.nutritionTargets(latest, weight, goal);
+  const today = dayKey(new Date());
+  const items = state.food.filter((f) => dayKey(toDate(f.date)) === today);
+  const { kcal, protein } = items.reduce((total, f) => ({
+    kcal: total.kcal + f.kcal, protein: total.protein + f.protein,
+  }), { kcal: 0, protein: 0 });
+  return { goal, targets, items, kcal, protein };
+}
+
+function viewToday() {
+  const { goal, targets, kcal, protein } = nutritionToday();
+  const workouts = workoutsSorted();
+  const active = workouts.find((w) => w.startedAt && !w.finishedAt && !w.planned);
+  const planned = workouts.filter((w) => w.planned && !w.finishedAt && dayKeyOf(w.date) >= dayKeyOf(new Date())).at(-1);
+  const program = L.programById(state.settings.activeProgram);
+  const day = program ? L.nextDay(program, state.workouts) : 0;
+  const title = (active || planned)?.title || program?.days[day].title || 'Первая тренировка';
+  const details = active ? workoutStats(active).join(' · ') : planned ? fmtDay(planned.date) :
+    program ? `${program.title} · ${estText(estItems(program.days[day].items))}` : 'Добавь упражнения и запиши подходы в дневник.';
+  const start = active ? `<a class="btn block" href="#w-${esc(active.id)}">${icon.play} Продолжить</a>`
+    : planned ? `<button class="btn block" data-act="w-start" data-id="${esc(planned.id)}">${icon.play} Начать тренировку</button>`
+    : `<button class="btn block" ${program ? `data-act="start-program" data-day="${day}"` : 'data-act="new-workout"'}>${icon.play} Начать тренировку</button>`;
+  return {
+    title: 'Сегодня', top: topTitle('Сегодня', `<a class="icon-btn" href="#profile" aria-label="Профиль">${icon.person}</a>`),
+    html: `${demoBanner()}<div class="today-grid">
+      <section class="card today-workout stack">
+        <div class="cat">${icon.dumbbell} ${active ? 'Тренировка идёт' : 'Следующая тренировка'}</div>
+        <h2>${esc(title)}</h2><p class="small muted">${esc(details)}</p>${start}
+        <a class="text-btn" href="#diary">Все тренировки ${icon.chev}</a>
+      </section>
+      <section class="card today-food stack">
+        <div class="row"><h2 class="grow">Питание</h2><a class="text-btn" href="#food">Открыть ${icon.chev}</a></div>
+        <p class="small muted">Цель · ${esc(L.GOALS[goal].title)}</p>
+        <div class="ring-wrap">${ring(kcal, targets.kcal, 'Калории', 'ккал')}${ring(protein, targets.protein, 'Белок', 'г')}</div>
+      </section>
+      <div class="stack today-week"><h2>Активность за неделю</h2>${weekRings()}</div>
+      <div class="stack today-calendar">${calendarCard()}</div>
+    </div>`,
+  };
+}
+
+const THEMES = [['system', 'Системная'], ['light', 'Светлая'], ['dark', 'Тёмная']];
+
+function viewProfile() {
+  const { goal } = nutritionToday();
+  const theme = L.validTheme(state.settings.theme) ? state.settings.theme : 'system';
+  return {
+    title: 'Профиль', top: topTitle('Профиль', '', ''),
+    html: `<section class="card stack"><h2>Цель и питание</h2>
+      <div class="seg" role="group" aria-label="Цель питания">${Object.entries(L.GOALS).map(([id, g]) =>
+        `<button class="${goal === id ? 'on' : ''}" aria-pressed="${goal === id}" data-act="goal" data-g="${id}">${g.title}</button>`).join('')}</div>
+      <a class="btn secondary" href="#food">${icon.food} Дневник питания</a></section>
+    <section class="card stack"><h2>Оформление</h2>
+      <div class="seg" role="group" aria-label="Тема приложения">${THEMES.map(([id, label]) =>
+        `<button class="${theme === id ? 'on' : ''}" aria-pressed="${theme === id}" data-act="theme" data-theme="${id}">${label}</button>`).join('')}</div></section>
+    <section class="card stack"><h2>Резервная копия</h2>
+      <button class="btn" data-act="export">Сохранить копию</button>
+      <button class="btn secondary" data-act="import-backup">Восстановить из копии</button></section>
+    <section class="card list">
+      <a class="item" href="#settings"><span class="thumb">${icon.gear}</span><span class="grow title">Настройки</span>${icon.chev}</a>
+      <button class="item" data-act="tour"><span class="thumb">${icon.book}</span><span class="grow title">Пройти обучение</span>${icon.chev}</button>
+    </section>`,
+  };
 }
 
 // ───────── Тело ─────────
@@ -227,8 +325,8 @@ function viewBody() {
   const importBtn = `<button class="icon-btn" data-act="import-pdf" aria-label="Загрузить отчёт InBody">${icon.upload}</button>`;
   if (!ms.length) {
     return {
-      title: 'Тело', top: topTitle('Тело', gear),
-      html: `<section class="card empty">
+      title: 'Прогресс', top: topTitle('Прогресс', gear),
+      html: `${progressNav('body')}<section class="card empty">
         <div class="art">${icon.doc}</div>
         <h2>Загрузи отчёт InBody</h2>
         <p>Скачай PDF в приложении DDX Fitness и выбери его здесь. «Форма» разберёт вес, мышцы, жир, сегменты и таблицу истории.</p>
@@ -245,13 +343,14 @@ function viewBody() {
   const prevOf = (metric, before) => [...ms].reverse().find((m) => m.day < before && m.values[metric] != null)?.values[metric];
   const ref = full || latest;
   const CARD_LOOK = { weight: [icon.scale, 'var(--purple)'], muscleMass: [icon.bolt, 'var(--orange)'], fatPercent: [icon.drop, 'var(--teal)'], fatMass: [icon.drop, 'var(--indigo)'] };
+  const metric = ui.bodyMetric;
   const cards = ['weight', 'muscleMass', 'fatPercent', 'fatMass'].map((m) => {
     const src = [...ms].reverse().find((x) => x.values[m] != null);
     if (!src) return '';
     const v = src.values[m];
     const tr = trendLine(seriesFor(m));
     const [ic, col] = CARD_LOOK[m];
-    return `<button class="metric ${ui.bodyMetric === m ? 'on' : ''}" style="--accent:${col}" data-act="body-metric" data-m="${m}">
+    return `<button class="metric ${m === metric ? 'on' : ''}" style="--accent:${col}" aria-pressed="${m === metric}" data-act="body-metric" data-m="${m}">
       <span class="label">${ic}${METRIC_INFO[m].title}</span>
       <span class="value">${num(v, METRIC_INFO[m].digits)}<small>${METRIC_INFO[m].unit === '%' ? '%' : METRIC_INFO[m].unit}</small></span>
       ${sparkline(seriesFor(m).slice(-10), col)}
@@ -260,7 +359,6 @@ function viewBody() {
     </button>`;
   }).join('');
 
-  const metric = ui.bodyMetric;
   const pts = seriesFor(metric);
   const range = [...ms].reverse().find((m) => m.ranges?.[metric])?.ranges[metric];
   let tl = null;
@@ -275,7 +373,7 @@ function viewBody() {
   const available = Object.keys(METRIC_INFO).filter((m) => ms.some((x) => x.values[m] != null));
   const chart = `<section class="card">
     <h2>${METRIC_INFO[metric].title}<span class="aside">${pts.length} ${plural(pts.length, 'замер', 'замера', 'замеров')}</span></h2>
-    <div class="chips" role="tablist">${available.map((m) => `<button class="chip ${m === metric ? 'on' : ''}" data-act="body-metric" data-m="${m}">${METRIC_INFO[m].short}</button>`).join('')}</div>
+    <div class="chips" role="group" aria-label="Показатель состава тела">${available.map((m) => `<button class="chip ${m === metric ? 'on' : ''}" aria-pressed="${m === metric}" data-act="body-metric" data-m="${m}">${METRIC_INFO[m].short}</button>`).join('')}</div>
     <div style="margin-top:10px">${lineChart(pts, { band: range, trendLine: tl, label: METRIC_INFO[metric].title })}</div>
     <div class="legend">${range ? `<span style="--c:var(--accent-soft)">норма ${num(range.min)}–${num(range.max)}</span>` : ''}${pts.some((p) => p.partial) ? '<span style="--c:var(--fill2)">пустые точки: из таблицы истории</span>' : ''}${tl ? '<span style="--c:var(--muted)">пунктир: тренд</span>' : ''}</div>
   </section>`;
@@ -310,7 +408,7 @@ function viewBody() {
       }
     }
     segs = `<section class="card"><h2>Сегменты<span class="aside">${fmtDay(segSrc.day)}</span></h2>
-      <div class="seg" role="tablist" style="margin-bottom:12px"><button class="${ui.segMode === 'muscle' ? 'on' : ''}" data-act="seg-mode" data-m="muscle">Мышцы</button><button class="${ui.segMode === 'fat' ? 'on' : ''}" data-act="seg-mode" data-m="fat">Жир</button></div>
+      <div class="seg" role="group" aria-label="Сегменты состава тела" style="margin-bottom:12px"><button class="${ui.segMode === 'muscle' ? 'on' : ''}" aria-pressed="${ui.segMode === 'muscle'}" data-act="seg-mode" data-m="muscle">Мышцы</button><button class="${ui.segMode === 'fat' ? 'on' : ''}" aria-pressed="${ui.segMode === 'fat'}" data-act="seg-mode" data-m="fat">Жир</button></div>
       <div class="body-map">${cells}</div>${ui.segMode === 'muscle' && notes.length ? `<div class="side-note">${notes.join('. ')}.</div>` : ''}</section>`;
   }
 
@@ -332,7 +430,7 @@ function viewBody() {
       <span class="value">${metricValue(m.values.weight, 'weight')}</span>${icon.chev}</button>`).join('');
 
   const backupNudge = !state.demo && (state.workouts.length + state.measurements.length) > 3 && (!state.settings.lastBackup || L.daysBetween(state.settings.lastBackup, new Date()) > 14)
-    ? banner('Данные хранятся только в этом браузере. Сделай резервную копию, чтобы их не потерять.', '<button class="btn small secondary" data-act="export">Сохранить</button>', icon.upload, 'var(--blue)') : '';
+    ? banner('Сохрани резервную копию, чтобы перенести дневник или восстановить данные.', '<button class="btn small secondary" data-act="export">Сохранить</button>', icon.upload, 'var(--blue)') : '';
 
   // Сводка: оценка InBody кольцом и мышцы/жир относительно нормы.
   const score = full?.values.score;
@@ -347,8 +445,8 @@ function viewBody() {
       <p class="footnote">Последний замер ${fmtDay(ref.day)}${ref.conditions ? `, ${conditionsText(ref.conditions)}` : ''}. Внешнее кольцо: оценка, два других: мышцы и жир от верхней границы нормы.</p>`;
 
   return {
-    title: 'Тело', top: topTitle('Тело', `${importBtn}${gear}`),
-    html: `${demoBanner()}${backupNudge}${summary}
+    title: 'Прогресс', top: topTitle('Прогресс', `${importBtn}${gear}`),
+    html: `${progressNav('body')}${demoBanner()}${backupNudge}${summary}
       <div class="section-title">Показатели</div>
       <div class="grid2">${cards}</div>${chart}${norms}${segs}${goals}
       <div class="section-title">Замеры</div>
@@ -443,7 +541,7 @@ function previewReport(report) {
       });
     },
     onRight: () => {
-      if (state.demo) { state = { ...L.emptyState(), aiChats: state.aiChats }; }
+      if (state.demo) clearDemo(false);
       const { list, added } = L.mergeMeasurements(state.measurements, L.measurementsFromReport(report, { ...cond }));
       state.measurements = list;
       save(); closeSheet(); ui.bodyMetric = 'weight';
@@ -499,7 +597,7 @@ function workoutRow(w) {
     <span class="value small">${fmtDay(w.date, false)}</span>${icon.chev}</a>`;
 }
 
-function viewDiary() {
+function viewDiary(section) {
   const ws = workoutsSorted();
   const program = L.programById(state.settings.activeProgram);
   const right = `<button class="icon-btn" data-act="go" data-to="catalog" aria-label="Справочник упражнений">${icon.book}</button><button class="icon-btn" data-act="go" data-to="settings" aria-label="Настройки">${icon.gear}</button>`;
@@ -537,14 +635,21 @@ function viewDiary() {
     let month = '';
     let group = [];
     const flushGroup = () => { if (group.length) list += `<div class="section-title">${month[0].toUpperCase() + month.slice(1)}</div><section class="card list thumbs">${group.join('')}</section>`; group = []; };
-    for (const w of ws.slice(0, 60)) {
+    for (const w of (section === 'history' ? ws : ws.slice(0, 60))) {
       const m = toDate(w.date).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '');
       if (m !== month) { flushGroup(); month = m; }
       group.push(workoutRow(w));
     }
     flushGroup();
   }
-  return { title: 'Дневник', top: topTitle('Дневник', right), html: `${demoBanner()}<div class="section-title" style="margin-top:0">Эта неделя</div>${weekRings()}${calendarCard()}${advisorCard()}${next}${actions}${mineHtml}${list}` };
+  const history = section === 'history';
+  const shortcuts = `<div class="workout-shortcuts">
+    <a class="btn secondary" href="#home">${icon.home} Дома</a>
+    <a class="btn secondary" href="#gym">${icon.dumbbell} Тренажёры</a>
+    <a class="btn secondary" href="#build-gym">${icon.plus} Создать</a>
+  </div>`;
+  return { title: 'Тренировки', top: topTitle('Тренировки', right, ''),
+    html: `${workoutNav(history ? 'diary-history' : 'diary')}${demoBanner()}${history ? list : `${next}${shortcuts}${actions}${mineHtml}${weekRings()}${calendarCard()}${advisorCard()}${list}`}` };
 }
 
 /** day: ключ дня «ГГГГ-ММ-ДД» из календаря; время берётся текущее, дата из календаря. */
@@ -599,7 +704,7 @@ function monthGrid(base, byDay, small = false) {
     const ws = byDay.get(k) || [];
     const home = ws.length && ws.every((w) => isHomeWorkout(w));
     const plan = ws.length && ws.every((w) => w.planned);
-    cells += `<button class="cal-d ${plan ? 'plan' : ws.length ? (home ? 'has home' : 'has') : ''} ${k === today ? 'today' : ''}" data-act="cal-day" data-day="${k}" aria-label="${d}${ws.length ? `, тренировок: ${ws.length}` : ''}">${d}</button>`;
+    cells += `<button class="cal-d ${plan ? 'plan' : ws.length ? (home ? 'has home' : 'has') : ''} ${k === today ? 'today' : ''}" data-act="cal-day" data-day="${k}" aria-label="${fmtDay(k)}${ws.length ? `, тренировок: ${ws.length}` : ''}">${d}</button>`;
   }
   return `<div class="cal ${small ? 'small' : ''}"><div class="cal-w">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((t) => `<span>${t}</span>`).join('')}</div><div class="cal-g">${cells}</div></div>`;
 }
@@ -621,7 +726,7 @@ function viewCalendar() {
   const months = [];
   for (let i = 0; i < 6; i++) { const d = new Date(base); d.setMonth(d.getMonth() - i); months.push(d); }
   const total = (d) => { const p = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; return [...byDay.entries()].filter(([k, ws]) => k.startsWith(p) && ws.some((w) => !w.planned)).length; };
-  return { title: 'Календарь', top: topBack('#diary', 'Календарь'), html: months.map((d) => `<div class="section-title">${monthTitle(d)}${total(d) ? ` · ${total(d)} ${plural(total(d), 'день', 'дня', 'дней')}` : ''}</div><section class="card cal-card">${monthGrid(d, byDay)}</section>`).join('') + '<p class="small muted" style="text-align:center">Оранжевым отмечены дни в зале, розовым дома, оранжевым кольцом запланированные. Нажми на любой день, чтобы открыть тренировку или сохранить новую.</p>' };
+  return { title: 'Календарь', top: topBack('#today', 'Календарь'), html: months.map((d) => `<div class="section-title">${monthTitle(d)}${total(d) ? ` · ${total(d)} ${plural(total(d), 'день', 'дня', 'дней')}` : ''}</div><section class="card cal-card">${monthGrid(d, byDay)}</section>`).join('') + '<p class="small muted" style="text-align:center">Зал отмечен акцентным цветом, дом — розовым, планы — контуром. Нажми на любой день, чтобы открыть тренировку или сохранить новую.</p>' };
 }
 function calDay(k) {
   const ws = workoutsByDay().get(k) || [];
@@ -1073,7 +1178,10 @@ const MACHINE_VIDEO = {
 };
 // Браузер иногда не запускает autoplay у видео, вставленного через innerHTML: запускаем сами.
 new MutationObserver(() => { for (const v of document.querySelectorAll('video[autoplay]')) if (v.paused && !v.dataset.kick) { v.dataset.kick = 1; v.muted = true; v.play()?.catch?.(() => {}); } }).observe(document.body, { childList: true, subtree: true });
-const videoTag = (src, label) => `<video class="ex-video" src="${src}" autoplay loop muted playsinline preload="auto" aria-label="Анимация: ${esc(label)}"></video>`;
+const videoTag = (src, label) => {
+  const motion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return `<video class="ex-video" src="${src}" ${motion ? 'controls preload="metadata"' : 'autoplay preload="auto"'} loop muted playsinline aria-label="Анимация: ${esc(label)}"></video>`;
+};
 /** Видео упражнения: своё по названию, иначе анимация тренажёра, к которому оно привязано. */
 const exVideoSrc = (name) => EX_VIDEO[name] || MACHINE_VIDEO[machineFor(name)?.id] || '';
 const exVideo = (name) => (exVideoSrc(name) ? videoTag(exVideoSrc(name), name) : '');
@@ -1277,7 +1385,7 @@ function viewPrograms() {
     ${p.days.map((d, i) => `<div><b class="small">${i + 1}. ${esc(d.title)}</b> <span class="small muted">${estText(estItems(d.items))}</span><div class="small muted">${d.items.map((x) => `${esc(x.exercise)} ${x.sets}×${x.reps[0]}–${x.reps[1]}`).join(' · ')}</div></div>`).join('')}
     ${p.id === active ? '<button class="btn secondary" data-act="set-program" data-id="">Отключить программу</button>' : `<button class="btn" data-act="set-program" data-id="${p.id}">Тренироваться по ней</button>`}
   </section>`).join('');
-  return { title: 'Программы', top: topBack('#diary', 'Программы'), html: `<p class="footnote" style="margin-top:0">Веса растут по двойной прогрессии: сначала добираешь повторы до верха диапазона во всех подходах, потом «Форма» прибавляет вес.</p>${cards}` };
+  return { title: 'Программы', top: topBack('#diary', 'Программы'), html: `${workoutNav('programs')}<p class="footnote" style="margin-top:0">Веса растут по двойной прогрессии: сначала добираешь повторы до верха диапазона во всех подходах, потом «Форма» прибавляет вес.</p>${cards}` };
 }
 
 function viewCatalog() {
@@ -1695,18 +1803,17 @@ function viewAI() {
   const thinking = AI.isThinking();
   const inChat = !!chat?.msgs.length;
   const left = `<span data-nav class="nav-left">${inChat ? `<button class="back-btn" data-act="ai-new" aria-label="Назад к началу">${icon.back}<span>Назад</span></button>` : `<button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button>`}</span>`;
-  const right = `<span class="nav-right">${inChat ? `<button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button>` : hasKey ? `<button class="icon-btn plain" data-act="ai-key" aria-label="Заменить ключ">${icon.key}</button>` : ''}<button class="icon-btn plain" data-act="ai-new" aria-label="Новый чат">${icon.compose}</button></span>`;
+  const right = `<span class="nav-right">${inChat ? `<button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button>` : ''}<button class="icon-btn plain" data-act="ai-new" aria-label="Новый чат">${icon.compose}</button></span>`;
+  const notice = '<p class="ai-disclosure small muted">При запросе выбранные фото, сообщения и сводка дневника отправляются в DeepSeek. Нужен API-ключ, условия и тарифы определяет DeepSeek.</p>';
   let body;
-  if (!hasKey && !inChat) {
-    body = `<div class="ai-hello"><span class="ai-logo">${icon.spark}</span><h2>ИИ-советник</h2><p>Спрашивай своими словами про тренировки, питание и замеры. Ответ учитывает твои рабочие веса, подходы и InBody.</p></div>
-      <section class="card stack ai-connect"><b>Подключи DeepSeek</b>
-        <p class="small muted" style="margin:0">Создай ключ на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> и пополни баланс: вопрос стоит меньше рубля. Ключ хранится только в этом браузере.</p>
-        <input id="ai-key" class="search" type="password" autocomplete="off" spellcheck="false" placeholder="Вставь ключ sk-…">
-        <button class="btn block" data-act="ai-save" style="background:var(--indigo)">Подключить</button></section>`;
-  } else if (!chat || !chat.msgs.length) {
-    body = `<div class="ai-hello"><span class="ai-logo">${icon.spark}</span><h2>Чем помочь?</h2><p>Я вижу твой дневник, рабочие веса и замеры InBody.</p></div>
-      <button class="card ai-photo-cta" data-act="ai-photo"><span class="ai-logo sm">${icon.camera}</span><span class="grow"><b>Сфоткай тренажёр</b><div class="small muted">Расскажу, что он качает, как настроить и с каким весом начать, и добавлю в тренировку</div></span>${icon.chev}</button>
-      <div class="ai-suggest">${AI_SUGGEST.map(([t, q], i) => `<button data-act="ai-suggest" data-i="${i}"><b>${esc(t)}</b><span>${esc(q)}</span></button>`).join('')}</div>`;
+  if (!inChat) {
+    body = `<div class="ai-hello"><span class="ai-logo">${icon.spark}</span><h2>Чем помочь?</h2></div>${notice}
+      ${hasKey ? '<button class="btn secondary" data-act="ai-key">Настроить ключ DeepSeek</button>' : `<section class="card stack ai-connect"><h2>Подключи DeepSeek</h2>
+        <div class="field"><label for="ai-key">Ключ API</label><input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…"></div>
+        <button class="btn block" data-act="ai-save">Подключить</button>
+        <a class="text-btn" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">Получить ключ на сайте DeepSeek</a></section>`}
+      <button class="card ai-photo-cta" data-act="${hasKey ? 'ai-photo' : 'ai-key'}"><span class="ai-logo sm">${icon.camera}</span><span class="grow"><b>Фото тренажёра</b><span class="sub">Техника и настройки</span></span>${icon.chev}</button>
+      <div class="ai-suggest">${AI_SUGGEST.map(([t, q], i) => `<button data-act="${hasKey ? 'ai-suggest' : 'ai-key'}" data-i="${i}"><b>${esc(t)}</b><span>${esc(q)}</span></button>`).join('')}</div>`;
   } else {
     body = `<div class="ai-feed">${chat.msgs.map((m, i) => {
       if (m.role === 'user') {
@@ -1722,12 +1829,12 @@ function viewAI() {
   }
   const composer = hasKey ? `<div class="ai-composer"><div class="box">
       ${aiState.photo ? `<div class="ai-attach"><img src="${aiState.photo.thumb}" alt="Фото к вопросу"><button class="x" data-act="ai-photo-x" aria-label="Убрать фото">${icon.x}</button></div>` : ''}
-      <textarea id="ai-input" rows="1" placeholder="${aiState.photo ? 'Что спросить про фото? Можно оставить пустым' : 'Спроси советника'}" ${aiState.busy ? 'disabled' : ''}>${esc(aiState.draft)}</textarea>
+      <textarea id="ai-input" aria-label="Сообщение тренеру" rows="1" placeholder="${aiState.photo ? 'Что спросить про фото? Можно оставить пустым' : 'Спроси советника'}" ${aiState.busy ? 'disabled' : ''}>${esc(aiState.draft)}</textarea>
       <div class="row2"><button class="icon-btn plain cam" data-act="ai-photo" aria-label="Сфотографировать или выбрать фото" ${aiState.busy ? 'disabled' : ''}>${icon.camera}</button>
         <button class="pill ${thinking ? 'on' : ''}" data-act="ai-think" aria-pressed="${thinking}">${icon.bolt} Думающая</button>
         <details class="ai-peek"><summary>Что видит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}\n\n${esc(aiPlannedNow())}</pre></details>
         <button class="send" data-act="ai-send" aria-label="Отправить" ${aiState.busy ? 'disabled' : ''}>${icon.up}</button></div></div></div>` : '';
-  return { title: 'ИИ-советник', cls: 'ai-view', top: `${left}<h1 class="small">ИИ-советник</h1>${right}`, html: body, foot: composer, after: () => { autoGrow(); fitViewport(); if (chat?.msgs.length) feedToEnd(); } };
+  return { title: 'ИИ-тренер', cls: 'ai-view', top: `${left}<h1 class="small">ИИ-тренер</h1>${right}`, html: inChat ? notice + body : body, foot: composer, after: () => { autoGrow(); fitViewport(); if (chat?.msgs.length) feedToEnd(); } };
 }
 
 /** Карточка упражнения из ответа ИИ: добавить в список и в тренировку. */
@@ -1888,8 +1995,8 @@ function aiKeySheet() {
   openSheet({
     title: 'Ключ DeepSeek', left: 'Закрыть',
     body: `<p class="small muted" style="margin:0">Сейчас подключён ключ ${k ? `<b>${esc(k.slice(0, 5))}…${esc(k.slice(-4))}</b>` : 'не задан'}. Новый ключ создай на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com → API keys</a> и вставь сюда.</p>
-      <input id="ai-key" class="search" type="password" autocomplete="off" spellcheck="false" placeholder="Новый ключ sk-…">
-      <button class="btn block" data-act="ai-save" style="background:var(--indigo)">Проверить и заменить</button>
+      <input data-ai-key class="search" type="password" autocomplete="off" spellcheck="false" placeholder="Новый ключ sk-…" aria-label="Новый ключ API">
+      <button class="btn block" data-act="ai-save" style="background:var(--accent)">Проверить и заменить</button>
       ${k ? '<button class="btn danger block" data-act="ai-forget">Удалить ключ</button>' : ''}`,
   });
 }
@@ -2015,7 +2122,10 @@ function viewAdvisor() {
 }
 
 // ───────── Аналитика ─────────
-function viewAnalytics() {
+function viewAnalytics(section) {
+  const records = section === 'records';
+  const navigation = progressNav(records ? 'analytics-records' : 'analytics');
+  const heading = records ? 'Рекорды' : 'Динамика';
   const ws = recordedWs();
   const now = new Date();
   const P = ui.period;
@@ -2028,7 +2138,7 @@ function viewAnalytics() {
   };
   const tipsHtml = advisorCard();
   if (!ws.length) {
-    return { title: 'Аналитика', top: topTitle('Аналитика'), html: `${demoBanner()}${tipsHtml}<section class="card empty"><div class="art">${icon.chart}</div><h2>Нечего считать</h2><p>Запиши пару тренировок в дневник, и здесь появятся тоннаж, нагрузка по группам мышц и прогресс по упражнениям.</p><a class="btn" href="#diary">В дневник</a></section>` };
+    return { title: heading, top: topTitle(heading, '', ''), html: `${navigation}${demoBanner()}${tipsHtml}<section class="card empty"><div class="art">${icon.chart}</div><h2>Нечего считать</h2><p>Запиши пару тренировок в дневник, и здесь появятся тоннаж, нагрузка по группам мышц и прогресс по упражнениям.</p><a class="btn" href="#diary">В дневник</a></section>` };
   }
   // Недели.
   const ws0 = L.weekStart(now);
@@ -2076,6 +2186,17 @@ function viewAnalytics() {
     const d = x.first ? x.last - x.first : 0;
     return `<a class="item" href="#ex-${encodeURIComponent(x.name)}">${thumb(x.name)}<span class="grow"><span class="title">${esc(x.name)}</span><div class="sub">${x.count} ${plural(x.count, 'тренировка', 'тренировки', 'тренировок')} · 1ПМ ≈ ${num(x.last, 0)} кг</div></span>${x.count > 1 ? `<span class="delta ${d >= 0 ? 'good' : 'bad'}">${signed(d, 1)} кг</span>` : ''}${icon.chev}</a>`;
   }).join('');
+  if (records) {
+    const ranked = [...exMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    return {
+      title: heading, top: topTitle(heading, '', ''),
+      html: `${navigation}${demoBanner()}<section class="card list thumbs">${ranked.map((x) =>
+        `<a class="item" href="#ex-${encodeURIComponent(x.name)}">${thumb(x.name)}
+          <span class="grow"><span class="title">${esc(x.name)}</span><span class="sub">Лучший расчётный 1ПМ</span></span>
+          <b class="value">${num(x.best, 1)} кг</b>${icon.chev}</a>`).join('') ||
+        '<p class="muted">Рекорды появятся после записи силовых подходов.</p>'}</section>`,
+    };
+  }
   // Тело и тренировки.
   let bodyVs = '';
   const bodyPts = state.measurements.filter((m) => !m.source).sort((a, b) => a.day.localeCompare(b.day));
@@ -2088,9 +2209,9 @@ function viewAnalytics() {
       <div class="legend"><span style="--c:var(--accent)">мышцы, кг от первого замера</span><span style="--c:var(--above)">жир</span><span style="--c:var(--accent-soft)">тоннаж за неделю</span></div></section>`;
   }
   return {
-    title: 'Аналитика', top: topTitle('Аналитика'),
-    html: `${demoBanner()}${tipsHtml}
-      <div class="seg" role="tablist">${[[28, '4 недели'], [84, '3 месяца'], [364, 'Год']].map(([p, t]) => `<button class="${P === p ? 'on' : ''}" data-act="period" data-p="${p}">${t}</button>`).join('')}</div>
+    title: heading, top: topTitle(heading, '', ''),
+    html: `${navigation}${demoBanner()}${tipsHtml}
+      <div class="seg" role="group" aria-label="Период динамики">${[[28, '4 недели'], [84, '3 месяца'], [364, 'Год']].map(([p, t]) => `<button class="${P === p ? 'on' : ''}" aria-pressed="${P === p}" data-act="period" data-p="${p}">${t}</button>`).join('')}</div>
       <section class="card"><div class="kpis">${kpi('тренировок', cur.length, prev.length, (v) => num(v, 0))}${kpi('тоннаж', sum(cur, volumeOf), sum(prev, volumeOf), tonnage)}${kpi('подходов', sum(cur, L.workoutSetCount), sum(prev, L.workoutSetCount), (v) => num(v, 0))}</div>
       <p class="small muted" style="margin:10px 0 0">Сравнение с предыдущим таким же периодом.</p></section>
       <section class="card"><h2>Тоннаж по неделям</h2>${barChart(weeks, { format: (v) => (v >= 1000 ? `${num(v / 1000, 1)}т` : num(v, 0)), label: 'Тоннаж по неделям' })}</section>
@@ -2144,13 +2265,8 @@ function ring(value, target, label, unit) {
 }
 
 function viewFood() {
-  const latest = latestFull();
-  const goal = state.settings.nutritionGoal || L.defaultGoal(latest);
-  const lastWeight = [...state.measurements].reverse().find((m) => m.values.weight != null)?.values.weight;
-  const t = L.nutritionTargets(latest, lastWeight, goal);
-  const today = dayKey(new Date());
-  const items = state.food.filter((f) => dayKey(toDate(f.date)) === today).sort((a, b) => (a.date < b.date ? 1 : -1));
-  const p = items.reduce((a, f) => a + f.protein, 0), k = items.reduce((a, f) => a + f.kcal, 0);
+  const { goal, targets: t, items: entries, protein: p, kcal: k } = nutritionToday();
+  const items = entries.sort((a, b) => b.date.localeCompare(a.date));
   const week = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
@@ -2159,7 +2275,7 @@ function viewFood() {
   }
   return {
     title: 'Питание', top: topTitle('Питание'),
-    html: `${demoBanner()}<div class="seg" role="tablist">${Object.entries(L.GOALS).map(([id, g]) => `<button class="${goal === id ? 'on' : ''}" data-act="goal" data-g="${id}">${g.title}</button>`).join('')}</div>
+    html: `${demoBanner()}<div class="seg" role="group" aria-label="Цель питания">${Object.entries(L.GOALS).map(([id, g]) => `<button class="${goal === id ? 'on' : ''}" aria-pressed="${goal === id}" data-act="goal" data-g="${id}">${g.title}</button>`).join('')}</div>
       <section class="card"><h2>Сегодня</h2><div class="ring-wrap">${ring(p, t.protein, 'Белок', 'г')}${ring(k, t.kcal, 'Калории', 'ккал')}</div>
       <p class="small muted" style="margin:10px 0 0">Белок ${num(L.GOALS[goal].protein, 1)} г на кг веса. Калории: ${esc(t.basis)}${L.GOALS[goal].kcal !== 1 ? `, ${L.GOALS[goal].kcal > 1 ? '+' : '−'}${num(Math.abs(L.GOALS[goal].kcal - 1) * 100, 0)}% под цель` : ''}.</p></section>
       <section class="card"><h2>Быстро добавить</h2><div class="presets">${L.FOOD_PRESETS.map((f, i) => `<button class="preset" data-act="preset" data-i="${i}"><b>${esc(f.title)}</b><span>${f.protein} г белка · ${f.kcal} ккал</span></button>`).join('')}</div></section>
@@ -2189,19 +2305,19 @@ function viewSettings() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const counts = `${state.measurements.length} ${plural(state.measurements.length, 'замер', 'замера', 'замеров')}, ${state.workouts.length} ${plural(state.workouts.length, 'тренировка', 'тренировки', 'тренировок')}, ${state.food.length} ${plural(state.food.length, 'запись', 'записи', 'записей')} еды`;
   return {
-    title: 'Настройки', top: topBack('#body', 'Настройки'),
-    html: `${standalone ? '' : `<section class="card"><h2>Поставить на экран «Домой»</h2><ol class="steps"><li>Открой эту страницу в Safari.</li><li>Нажми «Поделиться» внизу экрана.</li><li>Выбери «На экран „Домой“» и нажми «Добавить».</li></ol><p class="small muted" style="margin:10px 0 0">Так «Форма» открывается как приложение, работает без интернета, и Safari не стирает её данные.</p></section>`}
+    title: 'Настройки', top: topBack('#profile', 'Настройки'),
+    html: `${standalone ? '' : `<section class="card"><h2>Поставить на экран «Домой»</h2><ol class="steps"><li>Открой эту страницу в Safari.</li><li>Нажми «Поделиться» внизу экрана.</li><li>Выбери «На экран „Домой“» и нажми «Добавить».</li></ol><p class="small muted" style="margin:10px 0 0">Ярлык открывает «Форму» как приложение. После первой загрузки основные экраны доступны офлайн.</p></section>`}
       <section class="card stack"><h2>Обучение</h2>
         <p class="small muted" style="margin:0">Короткий тур по разделам «Формы»: что где находится и с чего начать.</p>
         <button class="btn secondary" data-act="tour">Пройти обучение</button></section>
       <section class="card stack"><h2>Резервная копия</h2>
-        <p class="small muted" style="margin:0">Все данные хранятся только в этом браузере: ${counts}. Копия в файле переносится между телефонами и в iOS-приложение «Форма», и обратно.</p>
+        <p class="small muted" style="margin:0">Данные дневника сохранены в браузере: ${counts}. Копия в файле переносится между телефонами и в iOS-приложение «Форма», и обратно.</p>
         ${state.settings.lastBackup ? `<p class="small muted" style="margin:0">Последняя копия: ${fmtDay(state.settings.lastBackup)}.</p>` : ''}
         <button class="btn" data-act="export">Сохранить копию</button>
         <button class="btn secondary" data-act="import-backup">Восстановить из копии</button>
         ${snapAt ? `<button class="btn ghost" data-act="undo-restore">Вернуть данные, какими они были до восстановления ${fmtDay(snapAt, false)}</button>` : ''}</section>
       <section class="card stack" id="ai-settings"><h2>ИИ-советник (DeepSeek)</h2>
-        <p class="small muted" style="margin:0">Чтобы задавать вопросы советнику, нужен свой ключ API DeepSeek. Создай его на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> и пополни баланс: один вопрос стоит меньше рубля. Ключ хранится только в этом браузере и не попадает в резервную копию.</p>
+        <p class="small muted" style="margin:0">Чтобы задавать вопросы советнику, нужен свой ключ API DeepSeek. Создай его на <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a>. Тарифы и доступность определяет DeepSeek. Ключ хранится только в этом браузере и не попадает в резервную копию.</p>
         <div class="field"><label for="ai-key">Ключ API</label><input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" value="${esc(AI.getKey())}"></div>
         <div class="seg">${AI.MODES.map(([m, t]) => `<button class="${AI.getMode() === m ? 'on' : ''}" data-act="ai-model" data-m="${m}">${t}</button>`).join('')}</div>
         <p class="small muted" style="margin:0">«Быстрая» отвечает за секунды. «Думающая» рассуждает дольше и стоит дороже, зато точнее в сложных вопросах. Серверы DeepSeek находятся в Китае.</p>
@@ -2213,7 +2329,7 @@ function viewSettings() {
       <section class="card stack"><h2>Обновление</h2>
         <p class="small muted" style="margin:0">Новая версия подтягивается сама при каждом запуске, если есть интернет. Ярлык переустанавливать не нужно: при удалении ярлыка iPhone стирает и данные приложения.</p>
         <button class="btn secondary" data-act="app-update">Обновить сейчас</button></section>
-      <p class="small muted" style="text-align:center">Форма для браузера · версия ${esc(APP_VERSION)} · данные не покидают устройство</p>`,
+      <p class="small muted" style="text-align:center">Форма для браузера · версия ${esc(APP_VERSION)}</p>`,
   };
 }
 
@@ -2302,8 +2418,8 @@ function importBackup(file) {
 }
 
 function clearDemo(rerender = true) {
-  const keep = { restSeconds: state.settings.restSeconds, activeProgram: rerender ? null : state.settings.activeProgram };
-  state = { ...L.emptyState(), aiChats: state.aiChats };
+  const keep = { theme: state.settings.theme, tourDone: state.settings.tourDone, restSeconds: state.settings.restSeconds, activeProgram: rerender ? null : state.settings.activeProgram };
+  state = { ...L.emptyState(), aiChats: state.aiChats, machines: state.machines };
   state.settings = { ...state.settings, ...keep };
   save();
   if (rerender) render(); else toast('Примерные данные удалены, дальше всё твоё');
@@ -2324,6 +2440,13 @@ document.addEventListener('click', (ev) => {
     case 'export': exportBackup(); break;
     case 'app-update': appUpdate(); break;
     case 'tour': startTour(); break;
+    case 'theme':
+      if (L.validTheme(el.dataset.theme)) {
+        state.settings.theme = el.dataset.theme;
+        save(); flush(); render();
+        document.querySelector('[data-act="theme"][aria-pressed="true"]')?.focus({ preventScroll: true });
+      }
+      break;
     case 'undo-restore':
       confirmSheet('Вернуть прежние данные?', 'Данные станут такими, какими были до восстановления из файла. То, что ты записал после восстановления, пропадёт.', 'Вернуть', () => {
         loadSnapshot().then(async (snap) => {
@@ -2336,8 +2459,14 @@ document.addEventListener('click', (ev) => {
       });
       break;
     case 'load-demo':
-      if (state.measurements.length || state.workouts.length) { toast('Примерные данные показываются только в пустом приложении'); break; }
-      state = { ...demoState(), aiChats: state.aiChats }; save(); render(true); break;
+      if (state.measurements.length || state.workouts.length || state.food.length || state.templates?.length ||
+          state.exercises.some((exercise) => exercise.isCustom || exercise.note)) {
+        toast('Примерные данные показываются только в пустом приложении'); break;
+      }
+      {
+        const demo = demoState();
+        state = { ...demo, settings: { ...demo.settings, theme: state.settings.theme, tourDone: state.settings.tourDone, restSeconds: state.settings.restSeconds }, aiChats: state.aiChats, machines: state.machines };
+      } save(); render(true); break;
     case 'clear-demo': clearDemo(); toast('Примерные данные удалены'); break;
     case 'erase': confirmSheet('Стереть все данные?', 'Замеры, тренировки и питание удалятся из этого браузера. История ИИ останется. Отменить нельзя, поэтому сначала сохрани копию.', 'Стереть всё', async () => { const chats = state.aiChats; await clearState(); state = { ...L.emptyState(), aiChats: chats }; save(); go('body'); render(true); }); break;
     case 'body-metric': ui.bodyMetric = el.dataset.m; render(); break;
@@ -2379,6 +2508,7 @@ document.addEventListener('click', (ev) => {
       S.isDone = !S.isDone;
       if (S.isDone && w.planned) { delete w.planned; if (dayKeyOf(w.date) === dayKeyOf(new Date())) { w.date = new Date().toISOString(); w.startedAt = w.date; } }
       save(); render();
+      document.querySelector(`[data-act="toggle-done"][data-e="${el.dataset.e}"][data-s="${el.dataset.s}"]`)?.focus({ preventScroll: true });
       if (S.isDone) startTimer(state.settings.restSeconds || 120);
       lockUpdate();
       break;
@@ -2388,7 +2518,17 @@ document.addEventListener('click', (ev) => {
     case 'del-set': E.sets.splice(+el.dataset.s, 1); save(); render(); break;
     case 'add-set': { const last = E.sets.at(-1); E.sets.push(last ? { ...last, isWarmup: false, isDone: false } : { weight: 0, reps: 0, isWarmup: false, isDone: false }); save(); render(); break; }
     case 'finish': finishWorkout(w); break;
-    case 'w-start': delete w.planned; w.date = new Date().toISOString(); w.startedAt = w.date; save(); render(); toast('Тренировка началась'); break;
+    case 'w-start': {
+      const workout = w || state.workouts.find((item) => item.id === el.dataset.id && item.planned);
+      if (!workout) break;
+      delete workout.planned;
+      workout.date = new Date().toISOString();
+      workout.startedAt = workout.date;
+      save();
+      if (w) render(); else go(`w-${workout.id}`);
+      toast('Тренировка началась');
+      break;
+    }
     case 'w-remind': remindWorkout(w); break;
     case 'remind-id': { const rw = state.workouts.find((x) => x.id === el.dataset.id); if (rw) remindWorkout(rw); break; }
     case 'del-workout':
@@ -2417,7 +2557,7 @@ document.addEventListener('click', (ev) => {
     case 'ai-model': AI.setMode(el.dataset.m); render(); break;
     case 'ai-key': aiKeySheet(); break;
     case 'ai-save': {
-      const v = AI.cleanKey($('#ai-key').value);
+      const v = AI.cleanKey((el.closest('.sheet') || document).querySelector('[data-ai-key], #ai-key').value);
       if (!v) { if (route().name === 'ai') toast('Вставь ключ'); else { AI.setKey(''); render(); toast('Ключ удалён'); } break; }
       if (!v.startsWith('sk-')) { toast('Это не ключ DeepSeek: он начинается с sk-. Его создают на platform.deepseek.com → API keys'); break; }
       const label = el.textContent; el.disabled = true; el.textContent = 'Проверяю ключ…';
@@ -2498,7 +2638,6 @@ function startTour() {
   closeSheet();
   openTour({
     icon, go,
-    color: (tab) => TABS.find((t) => t[0] === tab)?.[3],
     empty: !state.measurements.length && !state.workouts.length,
     standalone: matchMedia('(display-mode: standalone)').matches || !!navigator.standalone,
     onClose: () => { if (!state.settings.tourDone) { state.settings.tourDone = new Date().toISOString(); save(); } },
@@ -2521,12 +2660,10 @@ async function start() {
   for (const [name, group] of L.DEFAULT_EXERCISES) if (!state.exercises.some((e) => e.name === name)) state.exercises.push({ name, group, isCustom: false, note: '' });
   render(true);
   window.__formaBooted = true;
-  // Новому человеку (нет данных и обучение ещё не пройдено) сразу показываем приветствие.
-  if (!state.settings.tourDone && !state.measurements.length && !state.workouts.length && !state.demo) startTour();
   loadSnapshot().then((snap) => { if (snap?.at && Date.now() - new Date(snap.at) < 30 * 864e5) snapAt = snap.at; });
   persist();
   syncGymBase();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  if ('serviceWorker' in navigator && isSecureContext) {
     // Новая версия сайта ставится в фоне; как только она взяла управление, перезагружаемся один раз.
     const hadController = !!navigator.serviceWorker.controller;
     let reloaded = false;
