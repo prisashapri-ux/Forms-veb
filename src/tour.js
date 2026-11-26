@@ -141,7 +141,7 @@ function draw() {
     return;
   }
   const [tab, title, text, tips] = TOUR_STEPS[page - 1];
-  ctx.go(tab);
+  ctx.go(tab === 'diary' ? 'diary-program' : tab);
   el.setAttribute('aria-label', `${title}, шаг ${page} из ${TOUR_STEPS.length}`);
   el.innerHTML = `<div class="tour-hole" aria-hidden="true"></div>
     <div class="tour-card" style="--tabc:${ctx.color?.(tab) || 'var(--accent)'}">
@@ -161,7 +161,7 @@ function draw() {
 function place() {
   if (!el || page === 0 || page === LAST) return;
   const tab = TOUR_STEPS[page - 1][0];
-  const a = document.querySelector(`#tabs a[href="#${tab}"]`);
+  const a = document.querySelector(`#tabs a[data-tab-id="${tab}"]`);
   const hole = el.querySelector('.tour-hole');
   const card = el.querySelector('.tour-card');
   const bar = document.querySelector('.tabbar');

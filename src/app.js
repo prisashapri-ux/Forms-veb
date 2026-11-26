@@ -174,12 +174,13 @@ const route = () => parseRoute(location.hash);
 const go = (hash) => { location.hash = hash; };
 addEventListener('hashchange', () => { closeSheet(); render(true); });
 
+const premiumIcon = (name) => `<svg class="premium-svg" viewBox="0 0 24 24" aria-hidden="true"><use href="premium-icons.svg#${name}"/></svg>`;
 const TABS = [
-  ['today', 'Сегодня', icon.home],
-  ['diary', 'Тренировки', icon.dumbbell],
-  ['body', 'Прогресс', icon.chart],
-  ['ai', 'ИИ-тренер', icon.spark],
-  ['profile', 'Профиль', icon.person],
+  ['today', 'Сегодня', 'home', 'today'],
+  ['diary', 'Тренировки', 'gym', 'diary-program'],
+  ['body', 'Прогресс', 'chart', 'body'],
+  ['ai', 'ИИ', 'ai', 'ai'],
+  ['profile', 'Профиль', 'person', 'profile'],
 ];
 const TAB_TITLE = { today: 'Сегодня', body: 'Прогресс', diary: 'Тренировки', gym: 'Тренажёры', home: 'Дома', ai: 'ИИ-тренер', analytics: 'Динамика', food: 'Питание', profile: 'Профиль' };
 
@@ -195,8 +196,10 @@ function render(scrollTop = false) {
   if (r.name !== 'build') ui.draft = null;
   document.body.dataset.tab = tab;
   document.body.classList.toggle('chat-mode', r.name === 'ai');
-  $('#app').innerHTML = `<header class="top ${v.top.includes('data-nav') ? 'nav' : ''}">${v.top}</header><main class="view ${v.cls || ''}" id="view" tabindex="-1">${v.html}</main>${v.foot || ''}`;
-  $('#tabs').innerHTML = TABS.map(([id, t, ic]) => `<a href="#${id}" class="${tab === id ? 'on' : ''}" ${tab === id ? 'aria-current="page"' : ''}>${ic}<span>${t}</span></a>`).join('');
+  document.body.classList.toggle('premium-page', !!v.premium);
+  const header = v.premium || `top ${v.top.includes('data-nav') ? 'nav' : ''}`;
+  $('#app').innerHTML = `<header class="${header}">${v.top}</header><main class="view ${v.premium ? 'premium-view' : ''} ${v.cls || ''}" id="view" tabindex="-1">${v.html}</main>`;
+  $('#tabs').innerHTML = TABS.map(([id, t, ic, href]) => `<a href="#${href}" data-tab-id="${id}" class="${tab === id ? 'on' : ''}" ${tab === id ? 'aria-current="page"' : ''}>${premiumIcon(ic)}<span>${t}</span></a>`).join('');
   document.title = v.title ? `${v.title} · Форма` : 'Форма';
   if (scrollTop) scrollTo(0, 0); else scrollTo(0, y);
   if (scrollTop && !tourOpen()) $('#view').focus({ preventScroll: true });
@@ -223,7 +226,7 @@ function sectionNav(label, links, current) {
 }
 
 const workoutNav = (current) => sectionNav('Тренировки', [
-  ['programs', 'Программа'], ['diary', 'Дневник'], ['diary-history', 'История'],
+  ['diary-program', 'Программа'], ['diary', 'Дневник'], ['diary-history', 'История'],
 ], current);
 const progressNav = (current) => sectionNav('Прогресс', [
   ['body', 'Состав тела'], ['analytics', 'Динамика'], ['analytics-records', 'Рекорды'],
@@ -242,59 +245,142 @@ function nutritionToday() {
   return { goal, targets, items, kcal, protein };
 }
 
-function viewToday() {
-  const { goal, targets, kcal, protein } = nutritionToday();
+const preferredTheme = matchMedia('(prefers-color-scheme: dark)');
+preferredTheme.addEventListener?.('change', () => {
+  const toggle = document.querySelector('.premium-icon[data-act="theme"]');
+  if (!toggle || L.validTheme(state.settings.theme) && state.settings.theme !== 'system') return;
+  toggle.dataset.theme = preferredTheme.matches ? 'light' : 'dark';
+  toggle.setAttribute('aria-label', preferredTheme.matches ? 'Светлая тема' : 'Тёмная тема');
+  toggle.textContent = preferredTheme.matches ? '☀' : '☾';
+});
+
+function themeButton() {
+  const current = state.settings.theme;
+  const dark = current === 'dark' || (current !== 'light' && preferredTheme.matches);
+  return `<button class="premium-icon" data-act="theme" data-theme="${dark ? 'light' : 'dark'}"
+    aria-label="${dark ? 'Светлая тема' : 'Тёмная тема'}">${dark ? '☀' : '☾'}</button>`;
+}
+
+function premiumHeader(title) {
+  return { title, premium: 'premium-head', cls: 'premium-screen',
+    top: `<div><p class="premium-label">Форма <b>2.0</b></p><h1>${title}</h1></div>${themeButton()}` };
+}
+
+function upcomingWorkout(program = L.programById(state.settings.activeProgram)) {
   const workouts = workoutsSorted();
   const active = workouts.find((w) => w.startedAt && !w.finishedAt && !w.planned);
   const planned = workouts.filter((w) => w.planned && !w.finishedAt && dayKeyOf(w.date) >= dayKeyOf(new Date())).at(-1);
-  const program = L.programById(state.settings.activeProgram);
-  const day = program ? L.nextDay(program, state.workouts) : 0;
-  const title = (active || planned)?.title || program?.days[day].title || 'Первая тренировка';
-  const details = active ? workoutStats(active).join(' · ') : planned ? fmtDay(planned.date) :
-    program ? `${program.title} · ${estText(estItems(program.days[day].items))}` : 'Добавь упражнения и запиши подходы в дневник.';
-  const start = active ? `<a class="btn block" href="#w-${esc(active.id)}">${icon.play} Продолжить</a>`
-    : planned ? `<button class="btn block" data-act="w-start" data-id="${esc(planned.id)}">${icon.play} Начать тренировку</button>`
-    : `<button class="btn block" ${program ? `data-act="start-program" data-day="${day}"` : 'data-act="new-workout"'}>${icon.play} Начать тренировку</button>`;
+  const dayIndex = program ? L.nextDay(program, state.workouts) : 0;
+  const day = program?.days[dayIndex];
+  const workout = active || planned;
   return {
-    title: 'Сегодня', top: topTitle('Сегодня', `<a class="icon-btn" href="#profile" aria-label="Профиль">${icon.person}</a>`),
-    html: `${demoBanner()}<div class="today-grid">
-      <section class="card today-workout stack">
-        <div class="cat">${icon.dumbbell} ${active ? 'Тренировка идёт' : 'Следующая тренировка'}</div>
-        <h2>${esc(title)}</h2><p class="small muted">${esc(details)}</p>${start}
-        <a class="text-btn" href="#diary">Все тренировки ${icon.chev}</a>
-      </section>
-      <section class="card today-food stack">
-        <div class="row"><h2 class="grow">Питание</h2><a class="text-btn" href="#food">Открыть ${icon.chev}</a></div>
-        <p class="small muted">Цель · ${esc(L.GOALS[goal].title)}</p>
-        <div class="ring-wrap">${ring(kcal, targets.kcal, 'Калории', 'ккал')}${ring(protein, targets.protein, 'Белок', 'г')}</div>
-      </section>
-      <div class="stack today-week"><h2>Активность за неделю</h2>${weekRings()}</div>
-      <div class="stack today-calendar">${calendarCard()}</div>
-    </div>`,
+    title: workout?.title || day?.title || 'Первая тренировка',
+    label: active ? 'Тренировка идёт' : planned && dayKeyOf(planned.date) !== dayKeyOf(new Date()) ? fmtDay(planned.date) : 'Тренировка сегодня',
+    minutes: workout ? estWorkout(workout) : day ? estItems(day.items) : 0,
+    exercises: workout?.exercises.length ?? day?.items.length ?? 0,
+    href: workout ? `#w-${esc(workout.id)}` : '#diary-program',
+    start: active ? `<a class="premium-primary" href="#w-${esc(active.id)}">${premiumIcon('play')} Продолжить тренировку</a>`
+      : `<button class="premium-primary" ${planned ? `data-act="w-start" data-id="${esc(planned.id)}"`
+        : program ? `data-act="start-program" data-day="${dayIndex}"` : 'data-act="new-workout"'}>${premiumIcon('play')} Начать тренировку</button>`,
+  };
+}
+
+function weeklyActivity() {
+  const now = new Date();
+  const monday = L.weekStart(now);
+  const today = dayKeyOf(now);
+  const completed = new Set(recordedWs().filter((w) => w.finishedAt).map((w) => dayKeyOf(w.date)));
+  let count = 0;
+  const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((label, i) => {
+    const date = new Date(monday);
+    date.setDate(date.getDate() + i);
+    const key = dayKeyOf(date);
+    const done = completed.has(key);
+    if (done) count++;
+    return `<button class="premium-day ${done ? 'done' : ''}" data-act="cal-day" data-day="${key}"
+      aria-label="${fmtDay(key)}${done ? ', есть завершённая тренировка' : ''}" ${key === today ? 'aria-current="date"' : ''}>${label}<span aria-hidden="true">${done ? '✓' : ''}</span></button>`;
+  }).join('');
+  return `<section class="premium-week"><div class="premium-row"><h3>Активность недели</h3><p>${count} из 7 дней</p></div>
+    <div class="premium-days">${days}</div></section>`;
+}
+
+function nutritionMeter(label, value, target, unit = '', color = '') {
+  const percent = Math.round(value / target * 100);
+  return `<a class="premium-card premium-nut" href="#food">
+    <div class="premium-label">${label}</div>
+    <div class="premium-num">${num(value)}<small> / ${num(target, 0)}${unit}</small></div>
+    <div class="premium-meter"><span class="premium-meter-track" aria-hidden="true"><span style="width:${Math.max(0, Math.min(100, percent))}%;${color}"></span></span><span>${percent}%</span></div>
+  </a>`;
+}
+
+function viewToday() {
+  const { goal, targets, kcal, protein } = nutritionToday();
+  const next = upcomingWorkout();
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 6 ? 'Доброй ночи!' : hour < 12 ? 'Доброе утро!' : hour < 18 ? 'Добрый день!' : 'Добрый вечер!';
+  return {
+    title: 'Сегодня', premium: 'premium-hero',
+    top: `<div class="premium-brand">Форма <b>2.0</b></div>
+      <p class="premium-date">Сегодня, ${now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</p>
+      <div class="premium-tools">${themeButton()}<a href="#calendar" aria-label="Календарь">${premiumIcon('cal')}</a></div>
+      <h1>${greeting}</h1><p class="premium-subtitle">Время для прогресса</p>`,
+    html: `<a class="premium-card premium-goal" href="#profile-goal"><span class="premium-goal-icon" aria-hidden="true">◎</span>
+      <div><p class="premium-label">Цель</p><h2>${goalTitle(goal)}</h2></div>
+      <span class="premium-goal-ring" aria-hidden="true">${premiumIcon('chart')}</span></a>
+      ${demoBanner()}
+      <section class="premium-card premium-workout"><div class="premium-row">
+        <span class="premium-label">${esc(next.label)}</span><a class="premium-chevron" href="${next.href}" aria-label="Подробнее о тренировке">›</a></div>
+        <h2>${esc(next.title)}</h2><div class="premium-meta">
+        ${next.minutes ? `<span>${premiumIcon('clock')} ${estText(next.minutes)}</span>` : ''}
+        <span>${premiumIcon('gym')} ${next.exercises} ${plural(next.exercises, 'упражнение', 'упражнения', 'упражнений')}</span>
+        </div>${next.start}</section>
+      <div class="premium-nutrition">${nutritionMeter('🔥 Калории', kcal, targets.kcal)}
+        ${nutritionMeter('🍴 Белок', protein, targets.protein, ' г', '--meter-color:#ba8cf8')}</div>
+      ${weeklyActivity()}`,
   };
 }
 
 const THEMES = [['system', 'Системная'], ['light', 'Светлая'], ['dark', 'Тёмная']];
+const goalTitle = (id) => id === 'gain' ? 'Набор мышечной массы' : L.GOALS[id].title;
 
-function viewProfile() {
-  const { goal } = nutritionToday();
+function premiumTile(iconName, title, detail, href, action = '') {
+  const content = `${premiumIcon(iconName)}<strong>${title}</strong><small>${detail}</small>`;
+  return href ? `<a class="premium-card premium-tile" href="${href}">${content}</a>`
+    : `<button class="premium-card premium-tile" ${action}>${content}</button>`;
+}
+
+function premiumLine(iconName, title, detail, href, action = '') {
+  const content = `${premiumIcon(iconName)}<span>${title}<small>${detail}</small></span><b aria-hidden="true">›</b>`;
+  return href ? `<a class="premium-line" href="${href}">${content}</a>`
+    : `<button class="premium-line" ${action}>${content}</button>`;
+}
+
+function viewProfile(section) {
+  const { goal, targets } = nutritionToday();
   const theme = L.validTheme(state.settings.theme) ? state.settings.theme : 'system';
+  const controls = section === 'goal' ? `<section class="premium-card premium-panel"><h2>Моя цель</h2>
+    <div class="seg" role="group" aria-label="Цель питания">${Object.keys(L.GOALS).map((id) =>
+      `<button class="${goal === id ? 'on' : ''}" aria-pressed="${goal === id}" data-act="goal" data-g="${id}">${goalTitle(id)}</button>`).join('')}</div></section>`
+    : section === 'theme' ? `<section class="premium-card premium-panel"><h2>Оформление</h2>
+    <div class="seg" role="group" aria-label="Тема приложения">${THEMES.map(([id, label]) =>
+      `<button class="${theme === id ? 'on' : ''}" aria-pressed="${theme === id}" data-act="theme" data-theme="${id}">${label}</button>`).join('')}</div></section>` : '';
   return {
-    title: 'Профиль', top: topTitle('Профиль', '', ''),
-    html: `<section class="card stack"><h2>Цель и питание</h2>
-      <div class="seg" role="group" aria-label="Цель питания">${Object.entries(L.GOALS).map(([id, g]) =>
-        `<button class="${goal === id ? 'on' : ''}" aria-pressed="${goal === id}" data-act="goal" data-g="${id}">${g.title}</button>`).join('')}</div>
-      <a class="btn secondary" href="#food">${icon.food} Дневник питания</a></section>
-    <section class="card stack"><h2>Оформление</h2>
-      <div class="seg" role="group" aria-label="Тема приложения">${THEMES.map(([id, label]) =>
-        `<button class="${theme === id ? 'on' : ''}" aria-pressed="${theme === id}" data-act="theme" data-theme="${id}">${label}</button>`).join('')}</div></section>
-    <section class="card stack"><h2>Резервная копия</h2>
-      <button class="btn" data-act="export">Сохранить копию</button>
-      <button class="btn secondary" data-act="import-backup">Восстановить из копии</button></section>
-    <section class="card list">
-      <a class="item" href="#settings"><span class="thumb">${icon.gear}</span><span class="grow title">Настройки</span>${icon.chev}</a>
-      <button class="item" data-act="tour"><span class="thumb">${icon.book}</span><span class="grow title">Пройти обучение</span>${icon.chev}</button>
-    </section>`,
+    ...premiumHeader('Профиль'),
+    html: `<div class="premium-card premium-profile"><span class="premium-avatar">${premiumIcon('person')}</span>
+      <div><h2>Мой профиль</h2><p class="premium-label">Твой путь к лучшей форме</p></div></div>
+      <h3 class="premium-section">Персонализация</h3>
+      <section class="premium-card premium-panel">
+      ${premiumLine('chart', 'Моя цель', goalTitle(goal), '#profile-goal')}
+      ${premiumLine('gym', 'Питание', `${num(targets.kcal, 0)} ккал · ${num(targets.protein, 0)} г белка`, '#food')}
+      ${premiumLine('ai', 'Оформление', 'Premium Fitness', '#profile-theme')}</section>${controls}
+      <h3 class="premium-section">Данные и настройки</h3>
+      <section class="premium-card premium-panel">
+      ${premiumLine('cal', 'Резервная копия', 'Экспорт и восстановление данных', null, 'data-act="backup-options"')}
+      ${premiumLine('person', 'Настройки', 'Таймер и предпочтения', '#settings')}
+      ${premiumLine('ai', 'Обучение', 'Как пользоваться Формой', null, 'data-act="tour"')}</section>
+      <section class="premium-card premium-panel premium-style"><h2>Premium Fitness</h2>
+      <p>Текущий стиль оформления.</p></section>`,
   };
 }
 
@@ -320,13 +406,52 @@ function trendLine(points) {
 }
 
 function viewBody() {
+  const previous = viewBodyDetails();
+  const types = [['weight', 'Вес'], ['muscleMass', 'Мышцы'], ['fatPercent', 'Жир']];
+  const stats = types.map(([metric, label]) => {
+    const points = seriesFor(metric);
+    const value = points.at(-1)?.value;
+    const prior = points.at(-2)?.value;
+    const change = value != null && prior != null ? `${signed(value - prior, 1)} ${METRIC_INFO[metric].unit}` : '—';
+    return `<button class="premium-card premium-stat" data-act="body-metric" data-m="${metric}" aria-pressed="${ui.bodyMetric === metric}">
+      <span class="premium-label">${label}</span><strong>${value == null ? '—' : num(value, 1)}${value != null && metric === 'fatPercent' ? '%' : ''}</strong><em>${change}</em></button>`;
+  }).join('');
+  const period = ui.bodyDays || 31;
+  const points = seriesFor(ui.bodyMetric);
+  const last = points.at(-1);
+  const recent = last ? points.filter((point) => L.daysBetween(point.date, last.date) < period) : [];
+  const measurement = state.measurements.at(-1);
+  const label = ui.bodyMetric === 'weight' ? 'Динамика веса' : METRIC_INFO[ui.bodyMetric].title;
+  return {
+    ...premiumHeader('Прогресс'),
+    html: `${progressNav('body')}${demoBanner()}<div class="premium-stats">${stats}</div>
+      <section class="premium-card premium-panel premium-graph">
+        <div class="premium-row"><h2>${esc(label)}</h2><select id="premium-body-period" aria-label="Период графика">
+          <option value="31" ${period === 31 ? 'selected' : ''}>Месяц</option><option value="7" ${period === 7 ? 'selected' : ''}>Неделя</option></select></div>
+        ${recent.length ? lineChart(recent, { height: 145, area: false, label }) : '<p class="premium-notice">Добавь замер, чтобы увидеть динамику.</p>'}</section>
+      <section class="premium-card premium-panel"><div class="premium-row"><div><h2>InBody</h2>
+        <p class="premium-label">${measurement ? `Последний замер · ${fmtDay(measurement.day, false)}` : 'Замеров пока нет'}</p></div>
+        <span class="premium-label premium-report-arrow" aria-hidden="true">↗</span></div>
+        <button class="premium-primary" data-act="import-pdf">Импорт PDF InBody</button></section>
+      <details class="premium-card premium-more" ${ui.bodyDetails ? 'open' : ''}><summary>${measurement ? 'Замеры и подробные показатели' : 'Другие способы начать'}</summary><div>${previous.html}</div></details>`,
+    after: () => {
+      const details = $('.premium-more');
+      details.addEventListener('toggle', () => { ui.bodyDetails = details.open; });
+      $('#premium-body-period').addEventListener('change', (event) => {
+        ui.bodyDays = Number(event.target.value); render(); $('#premium-body-period').focus({ preventScroll: true });
+      });
+    },
+  };
+}
+
+function viewBodyDetails() {
   const ms = state.measurements;
   const gear = `<button class="icon-btn" data-act="go" data-to="settings" aria-label="Настройки">${icon.gear}</button>`;
   const importBtn = `<button class="icon-btn" data-act="import-pdf" aria-label="Загрузить отчёт InBody">${icon.upload}</button>`;
   if (!ms.length) {
     return {
       title: 'Прогресс', top: topTitle('Прогресс', gear),
-      html: `${progressNav('body')}<section class="card empty">
+      html: `<section class="card empty">
         <div class="art">${icon.doc}</div>
         <h2>Загрузи отчёт InBody</h2>
         <p>Скачай PDF в приложении DDX Fitness и выбери его здесь. «Форма» разберёт вес, мышцы, жир, сегменты и таблицу истории.</p>
@@ -446,7 +571,7 @@ function viewBody() {
 
   return {
     title: 'Прогресс', top: topTitle('Прогресс', `${importBtn}${gear}`),
-    html: `${progressNav('body')}${demoBanner()}${backupNudge}${summary}
+    html: `${backupNudge}${summary}
       <div class="section-title">Показатели</div>
       <div class="grid2">${cards}</div>${chart}${norms}${segs}${goals}
       <div class="section-title">Замеры</div>
@@ -597,10 +722,36 @@ function workoutRow(w) {
     <span class="value small">${fmtDay(w.date, false)}</span>${icon.chev}</a>`;
 }
 
+function viewTrainingProgram() {
+  const program = L.programById(state.settings.activeProgram);
+  const next = upcomingWorkout(program);
+  const week = L.weekStart(new Date());
+  const count = program ? state.workouts.filter((w) => w.programID === program.id && w.finishedAt && toDate(w.date) >= week).length : 0;
+  return {
+    ...premiumHeader('Тренировки'),
+    html: `${workoutNav('diary-program')}${demoBanner()}
+      <section class="premium-card premium-workout"><p class="premium-label">Текущая программа</p>
+      <h2>${program ? esc(program.title) : 'Выбери программу'}</h2>
+      ${program ? `<div class="premium-meta">${program.perWeek} ${plural(program.perWeek, 'день', 'дня', 'дней')} в неделю</div>
+        <div class="premium-progress" aria-hidden="true"><span style="width:${Math.min(100, 100 * count / program.perWeek)}%"></span></div>
+        <p class="premium-label" style="margin-top:6px">${count} из ${program.perWeek} тренировок за неделю</p>${next.start}`
+        : '<a class="premium-primary" href="#programs">Выбрать программу</a>'}</section>
+      <h3 class="premium-section">Выбери тренировку</h3>
+      <div class="premium-tilegrid">${premiumTile('gym', 'В зале', 'Программы и упражнения', '#programs')}
+      ${premiumTile('home', 'Дома', 'Домашние комплексы', '#home')}
+      ${premiumTile('gym', 'Тренажёры', 'Каталог оборудования', '#gym')}
+      ${premiumTile('cal', 'Создать', 'Своя тренировка', '#build-gym')}</div>
+      <h3 class="premium-section">Следующая тренировка</h3>
+      <div class="premium-card premium-panel">${premiumLine('gym', esc(next.title),
+        next.minutes ? `${estText(next.minutes)} · ${next.exercises} ${plural(next.exercises, 'упражнение', 'упражнения', 'упражнений')}` : 'Дневник тренировок',
+        next.href === '#diary-program' ? '#diary' : next.href)}</div>`,
+  };
+}
+
 function viewDiary(section) {
+  if (section === 'program') return viewTrainingProgram();
   const ws = workoutsSorted();
   const program = L.programById(state.settings.activeProgram);
-  const right = `<button class="icon-btn" data-act="go" data-to="catalog" aria-label="Справочник упражнений">${icon.book}</button><button class="icon-btn" data-act="go" data-to="settings" aria-label="Настройки">${icon.gear}</button>`;
   let next = '';
   if (program) {
     const d = L.nextDay(program, state.workouts);
@@ -648,8 +799,8 @@ function viewDiary(section) {
     <a class="btn secondary" href="#gym">${icon.dumbbell} Тренажёры</a>
     <a class="btn secondary" href="#build-gym">${icon.plus} Создать</a>
   </div>`;
-  return { title: 'Тренировки', top: topTitle('Тренировки', right, ''),
-    html: `${workoutNav(history ? 'diary-history' : 'diary')}${demoBanner()}${history ? list : `${next}${shortcuts}${actions}${mineHtml}${weekRings()}${calendarCard()}${advisorCard()}${list}`}` };
+  return { ...premiumHeader('Тренировки'),
+    html: `${workoutNav(history ? 'diary-history' : 'diary')}${demoBanner()}${history ? list : `${next}${shortcuts}${actions}${mineHtml}${weekRings()}${calendarCard()}${advisorCard()}<a class="btn secondary block" href="#catalog">Справочник упражнений</a>${list}`}` };
 }
 
 /** day: ключ дня «ГГГГ-ММ-ДД» из календаря; время берётся текущее, дата из календаря. */
@@ -1385,7 +1536,7 @@ function viewPrograms() {
     ${p.days.map((d, i) => `<div><b class="small">${i + 1}. ${esc(d.title)}</b> <span class="small muted">${estText(estItems(d.items))}</span><div class="small muted">${d.items.map((x) => `${esc(x.exercise)} ${x.sets}×${x.reps[0]}–${x.reps[1]}`).join(' · ')}</div></div>`).join('')}
     ${p.id === active ? '<button class="btn secondary" data-act="set-program" data-id="">Отключить программу</button>' : `<button class="btn" data-act="set-program" data-id="${p.id}">Тренироваться по ней</button>`}
   </section>`).join('');
-  return { title: 'Программы', top: topBack('#diary', 'Программы'), html: `${workoutNav('programs')}<p class="footnote" style="margin-top:0">Веса растут по двойной прогрессии: сначала добираешь повторы до верха диапазона во всех подходах, потом «Форма» прибавляет вес.</p>${cards}` };
+  return { title: 'Программы', top: topBack('#diary', 'Программы'), html: `${workoutNav('diary-program')}<p class="footnote" style="margin-top:0">Веса растут по двойной прогрессии: сначала добираешь повторы до верха диапазона во всех подходах, потом «Форма» прибавляет вес.</p>${cards}` };
 }
 
 function viewCatalog() {
@@ -1780,10 +1931,10 @@ function aiSummaryNow() {
 
 // ───────── ИИ-помощник: отдельный раздел с чатом ─────────
 const AI_SUGGEST = [
-  ['Почему не растут веса?', 'Посмотри мои упражнения: где застой и что поменять в ближайшие 2 недели?'],
-  ['Разбери мой InBody', 'Разбери мои последние замеры InBody: что меняется и на что обратить внимание?'],
-  ['Сколько белка и калорий?', 'Сколько мне есть белка и калорий под мою цель, судя по замерам?'],
-  ['Тренировка на сегодня', 'Предложи тренировку на сегодня с учётом того, что я делал на этой неделе.'],
+  ['Техника', 'Разобрать упражнение', 'Посмотри последние упражнения и расскажи, на что обратить внимание в технике.', 'ai'],
+  ['План', 'Подобрать тренировку', 'Предложи тренировку на сегодня с учётом того, что я делал на этой неделе.', 'cal'],
+  ['InBody', 'Разобрать показатели', 'Разбери мои последние замеры InBody: что меняется и на что обратить внимание?', 'chart'],
+  ['Питание', 'Оценить нормы', 'Сколько мне есть белка и калорий под мою цель, судя по замерам?', 'gym'],
 ];
 const aiState = { chats: null, id: null, busy: false, draft: '', photo: null };
 const aiChats = () => (aiState.chats ||= L.cleanChats(state.aiChats));
@@ -1802,20 +1953,11 @@ function viewAI() {
   const chat = aiCurrent();
   const thinking = AI.isThinking();
   const inChat = !!chat?.msgs.length;
-  const left = `<span data-nav class="nav-left">${inChat ? `<button class="back-btn" data-act="ai-new" aria-label="Назад к началу">${icon.back}<span>Назад</span></button>` : `<button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button>`}</span>`;
-  const right = `<span class="nav-right">${inChat ? `<button class="icon-btn plain" data-act="ai-history" aria-label="История разговоров">${icon.list}</button>` : ''}<button class="icon-btn plain" data-act="ai-new" aria-label="Новый чат">${icon.compose}</button></span>`;
-  const notice = '<p class="ai-disclosure small muted">При запросе выбранные фото, сообщения и сводка дневника отправляются в DeepSeek. Нужен API-ключ, условия и тарифы определяет DeepSeek.</p>';
-  let body;
-  if (!inChat) {
-    body = `<div class="ai-hello"><span class="ai-logo">${icon.spark}</span><h2>Чем помочь?</h2></div>${notice}
-      ${hasKey ? '<button class="btn secondary" data-act="ai-key">Настроить ключ DeepSeek</button>' : `<section class="card stack ai-connect"><h2>Подключи DeepSeek</h2>
-        <div class="field"><label for="ai-key">Ключ API</label><input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…"></div>
-        <button class="btn block" data-act="ai-save">Подключить</button>
-        <a class="text-btn" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">Получить ключ на сайте DeepSeek</a></section>`}
-      <button class="card ai-photo-cta" data-act="${hasKey ? 'ai-photo' : 'ai-key'}"><span class="ai-logo sm">${icon.camera}</span><span class="grow"><b>Фото тренажёра</b><span class="sub">Техника и настройки</span></span>${icon.chev}</button>
-      <div class="ai-suggest">${AI_SUGGEST.map(([t, q], i) => `<button data-act="${hasKey ? 'ai-suggest' : 'ai-key'}" data-i="${i}"><b>${esc(t)}</b><span>${esc(q)}</span></button>`).join('')}</div>`;
-  } else {
-    body = `<div class="ai-feed">${chat.msgs.map((m, i) => {
+  const notice = '<p class="premium-notice">При запросе выбранные фото, сообщения и сводка дневника отправляются в DeepSeek. Нужен API-ключ, условия и тарифы определяет DeepSeek.</p>';
+  let body = hasKey ? 'Чем помочь сегодня?' : 'Подключи DeepSeek, чтобы отправлять сообщения. Сохранённые разговоры доступны в истории.';
+  if (!inChat) body = `<div class="bubble">${body}</div>`;
+  else {
+    body = `${chat.msgs.map((m, i) => {
       if (m.role === 'user') {
         const pic = m.image || m.thumb ? `<img class="ai-pic" src="${esc(m.image || m.thumb)}" alt="Фото">` : m.hadPhoto ? `<div class="ai-pic none">${icon.camera} фото</div>` : '';
         return `<div class="ai-msg user">${pic}<div class="bubble">${esc(m.text).replace(/\n/g, '<br>')}</div></div>`;
@@ -1825,16 +1967,33 @@ function viewAI() {
       return `<div class="ai-msg assistant"><span class="ai-ava">${icon.spark}</span><div class="ai-text">${AI.mdLite(text)}${exercises.map((x, k) => aiExCard(x, m, i, k)).join('')}${aiPlanCards(workouts, m, i)}
           <div class="ai-actions"><button class="icon-btn plain" data-act="ai-copy" data-i="${i}" aria-label="Скопировать">${icon.copy}</button>${m.model === 'think' || m.model === 'deepseek-reasoner' ? '<span class="small muted">думающая</span>' : ''}</div></div></div>`;
     }).join('')}
-      ${aiState.busy ? `<div class="ai-msg assistant"><span class="ai-ava">${icon.spark}</span><div class="ai-text"><span class="typing"><i></i><i></i><i></i></span>${thinking ? '<span class="small muted"> думает, это может занять минуту</span>' : ''}</div></div>` : ''}</div>`;
+      ${aiState.busy ? `<div class="ai-msg assistant"><span class="ai-ava">${icon.spark}</span><div class="ai-text"><span class="typing"><i></i><i></i><i></i></span>${thinking ? '<span class="small muted"> думает, это может занять минуту</span>' : ''}</div></div>` : ''}`;
   }
-  const composer = hasKey ? `<div class="ai-composer"><div class="box">
-      ${aiState.photo ? `<div class="ai-attach"><img src="${aiState.photo.thumb}" alt="Фото к вопросу"><button class="x" data-act="ai-photo-x" aria-label="Убрать фото">${icon.x}</button></div>` : ''}
-      <textarea id="ai-input" aria-label="Сообщение тренеру" rows="1" placeholder="${aiState.photo ? 'Что спросить про фото? Можно оставить пустым' : 'Спроси советника'}" ${aiState.busy ? 'disabled' : ''}>${esc(aiState.draft)}</textarea>
-      <div class="row2"><button class="icon-btn plain cam" data-act="ai-photo" aria-label="Сфотографировать или выбрать фото" ${aiState.busy ? 'disabled' : ''}>${icon.camera}</button>
-        <button class="pill ${thinking ? 'on' : ''}" data-act="ai-think" aria-pressed="${thinking}">${icon.bolt} Думающая</button>
-        <details class="ai-peek"><summary>Что видит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}\n\n${esc(aiPlannedNow())}</pre></details>
-        <button class="send" data-act="ai-send" aria-label="Отправить" ${aiState.busy ? 'disabled' : ''}>${icon.up}</button></div></div></div>` : '';
-  return { title: 'ИИ-тренер', cls: 'ai-view', top: `${left}<h1 class="small">ИИ-тренер</h1>${right}`, html: inChat ? notice + body : body, foot: composer, after: () => { autoGrow(); fitViewport(); if (chat?.msgs.length) feedToEnd(); } };
+  const attach = aiState.photo ? `<div class="ai-attach"><img src="${aiState.photo.thumb}" alt="Фото к вопросу">
+    <button class="x" data-act="ai-photo-x" aria-label="Убрать фото">${icon.x}</button></div>` : '';
+  const composer = `<div class="premium-compose">
+    <textarea id="ai-input" aria-label="Сообщение тренеру" rows="1" placeholder="Спроси тренера…" ${!hasKey || aiState.busy ? 'disabled' : ''}>${esc(aiState.draft)}</textarea>
+    <button class="premium-send" data-act="${hasKey ? 'ai-send' : 'ai-key'}" aria-label="${hasKey ? 'Отправить' : 'Подключить DeepSeek'}" ${aiState.busy ? 'disabled' : ''}>↑</button>
+  </div>`;
+  const options = `<div class="premium-ai-options">
+    <button class="premium-secondary" data-act="ai-key">${hasKey ? 'Ключ DeepSeek' : 'Подключить DeepSeek'}</button>
+    ${hasKey ? `<button class="premium-secondary" data-act="ai-think" aria-pressed="${thinking}">${icon.bolt} Думающая</button>
+    <details><summary>Что видит ИИ</summary><pre class="summary-pre">${esc(aiSummaryNow())}
+
+${esc(aiPlannedNow())}</pre></details>` : ''}</div>`;
+  const action = hasKey ? 'ai-suggest' : 'ai-key';
+  return {
+    ...premiumHeader('ИИ-тренер'), cls: 'premium-screen ai-view',
+    html: `<div class="premium-row"><button class="premium-secondary" data-act="ai-history">История</button>
+      <button class="premium-secondary" data-act="ai-new" ${aiState.busy ? 'disabled' : ''}>+ Новый чат</button></div>
+      <div class="premium-chat" aria-live="polite">${body}</div><h3 class="premium-section">Быстрые действия</h3>
+      <div class="premium-tilegrid">${premiumTile('gym', 'Тренажёр', 'Распознать по фото', null, `data-act="${hasKey ? 'ai-photo' : 'ai-key'}" ${aiState.busy ? 'disabled' : ''}`)}
+      ${AI_SUGGEST.slice(0, 3).map(([title, description, , symbol], i) => premiumTile(symbol, title, description, null,
+        `data-act="${action}" data-i="${i}" ${aiState.busy ? 'disabled' : ''}`)).join('')}</div>
+      ${attach}${composer}${notice}${options}
+      <button class="text-btn" data-act="${action}" data-i="3">Вопрос о питании</button>`,
+    after: () => { autoGrow(); fitViewport(); },
+  };
 }
 
 /** Карточка упражнения из ответа ИИ: добавить в список и в тренировку. */
@@ -2019,7 +2178,7 @@ function aiHistory() {
 async function aiSend(text) {
   const photo = text == null ? aiState.photo : null;
   const q = String(text ?? $('#ai-input')?.value ?? '').trim() || (photo ? 'Что это за тренажёр, как на нём заниматься и с каким весом мне начать?' : '');
-  if (!q || aiState.busy) return;
+  if (!q || aiState.busy || !AI.getKey()) return;
   let chat = aiCurrent();
   if (!chat) { chat = { id: L.uid(), title: AI.chatTitle(photo && !$('#ai-input')?.value.trim() ? 'Фото тренажёра' : q), created: Date.now(), updated: Date.now(), msgs: [] }; aiChats().push(chat); aiState.id = chat.id; }
   chat.msgs.push(photo ? { role: 'user', text: q.slice(0, 4000), image: photo.image, thumb: photo.thumb } : { role: 'user', text: q.slice(0, 4000) });
@@ -2049,8 +2208,8 @@ async function aiRun(chat) {
 
 function aiAct(act, el) {
   if (act === 'ai-send') aiSend();
-  else if (act === 'ai-suggest') aiSend(AI_SUGGEST[+el.dataset.i][1]);
-  else if (act === 'ai-new') { aiState.id = null; aiState.draft = ''; render(); }
+  else if (act === 'ai-suggest') aiSend(AI_SUGGEST[+el.dataset.i][2]);
+  else if (act === 'ai-new') { aiState.id = null; aiState.draft = ''; aiState.photo = null; render(); }
   else if (act === 'ai-history') aiHistory();
   else if (act === 'ai-think') { AI.setMode(AI.isThinking() ? 'fast' : 'think'); aiState.draft = $('#ai-input')?.value || ''; render(); }
   else if (act === 'ai-photo') {
@@ -2138,7 +2297,7 @@ function viewAnalytics(section) {
   };
   const tipsHtml = advisorCard();
   if (!ws.length) {
-    return { title: heading, top: topTitle(heading, '', ''), html: `${navigation}${demoBanner()}${tipsHtml}<section class="card empty"><div class="art">${icon.chart}</div><h2>Нечего считать</h2><p>Запиши пару тренировок в дневник, и здесь появятся тоннаж, нагрузка по группам мышц и прогресс по упражнениям.</p><a class="btn" href="#diary">В дневник</a></section>` };
+    return { ...premiumHeader('Прогресс'), title: heading, html: `${navigation}${demoBanner()}${tipsHtml}<section class="card empty"><div class="art">${icon.chart}</div><h2>Нечего считать</h2><p>Запиши пару тренировок в дневник, и здесь появятся тоннаж, нагрузка по группам мышц и прогресс по упражнениям.</p><a class="btn" href="#diary">В дневник</a></section>` };
   }
   // Недели.
   const ws0 = L.weekStart(now);
@@ -2189,7 +2348,7 @@ function viewAnalytics(section) {
   if (records) {
     const ranked = [...exMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
     return {
-      title: heading, top: topTitle(heading, '', ''),
+      ...premiumHeader('Прогресс'), title: heading,
       html: `${navigation}${demoBanner()}<section class="card list thumbs">${ranked.map((x) =>
         `<a class="item" href="#ex-${encodeURIComponent(x.name)}">${thumb(x.name)}
           <span class="grow"><span class="title">${esc(x.name)}</span><span class="sub">Лучший расчётный 1ПМ</span></span>
@@ -2209,7 +2368,7 @@ function viewAnalytics(section) {
       <div class="legend"><span style="--c:var(--accent)">мышцы, кг от первого замера</span><span style="--c:var(--above)">жир</span><span style="--c:var(--accent-soft)">тоннаж за неделю</span></div></section>`;
   }
   return {
-    title: heading, top: topTitle(heading, '', ''),
+    ...premiumHeader('Прогресс'), title: heading,
     html: `${navigation}${demoBanner()}${tipsHtml}
       <div class="seg" role="group" aria-label="Период динамики">${[[28, '4 недели'], [84, '3 месяца'], [364, 'Год']].map(([p, t]) => `<button class="${P === p ? 'on' : ''}" aria-pressed="${P === p}" data-act="period" data-p="${p}">${t}</button>`).join('')}</div>
       <section class="card"><div class="kpis">${kpi('тренировок', cur.length, prev.length, (v) => num(v, 0))}${kpi('тоннаж', sum(cur, volumeOf), sum(prev, volumeOf), tonnage)}${kpi('подходов', sum(cur, L.workoutSetCount), sum(prev, L.workoutSetCount), (v) => num(v, 0))}</div>
@@ -2440,11 +2599,16 @@ document.addEventListener('click', (ev) => {
     case 'export': exportBackup(); break;
     case 'app-update': appUpdate(); break;
     case 'tour': startTour(); break;
+    case 'backup-options':
+      openSheet({ title: 'Резервная копия', left: 'Закрыть', body: `
+        <button class="btn block" data-act="export">Сохранить копию</button>
+        <button class="btn secondary block" data-act="import-backup">Восстановить из копии</button>` });
+      break;
     case 'theme':
       if (L.validTheme(el.dataset.theme)) {
         state.settings.theme = el.dataset.theme;
         save(); flush(); render();
-        document.querySelector('[data-act="theme"][aria-pressed="true"]')?.focus({ preventScroll: true });
+        document.querySelector('[data-act="theme"][aria-pressed="true"]' + (el.matches('.premium-icon') ? ', .premium-icon[data-act="theme"]' : ''))?.focus({ preventScroll: true });
       }
       break;
     case 'undo-restore':
@@ -2665,7 +2829,7 @@ async function start() {
   syncGymBase();
   if ('serviceWorker' in navigator && isSecureContext) {
     // Новая версия сайта ставится в фоне; как только она взяла управление, перезагружаемся один раз.
-    const hadController = !!navigator.serviceWorker.controller;
+    let hadController = !!navigator.serviceWorker.controller;
     let reloaded = false;
     // Не перезагружаемся посреди дела: ИИ читает табло, открыт таймер, чат или окно, идёт тренировка.
     // Тогда обновление ждёт, пока приложение свернут или откроют другой экран.
@@ -2678,7 +2842,8 @@ async function start() {
     };
     let pendingReload = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hadController || pendingReload) return;
+      if (!hadController) { hadController = true; return; }
+      if (pendingReload) return;
       pendingReload = true;
       flush();
       tryReload();
